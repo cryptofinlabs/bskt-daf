@@ -1,0 +1,27 @@
+{
+  "name": "bskt-daf",
+  "version": "0.0.1",
+  "description": "",
+  "main": "truffle.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "truffle test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cryptofinlabs/bskt-daf.git"
+  },
+  "author": "CryptoFin",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cryptofinlabs/bskt-daf/issues"
+  },
+  "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
+  "dependencies": {},
+  "devDependencies": {
+    "openzeppelin-solidity": "^1.10.0",
+    "truffle": "^4.1.13"
+  }
+}
