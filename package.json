@@ -7,7 +7,10 @@
     "test": "test"
   },
   "scripts": {
-    "test": "truffle test"
+    "coverage": "solidity-coverage",
+    "ganache-cli": "./scripts/ganache-cli.sh",
+    "lint": "solium --dir ./contracts",
+    "test": "npm run lint && npm run ganache-cli && truffle test"
   },
   "repository": {
     "type": "git",
@@ -21,7 +24,10 @@
   "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
   "dependencies": {},
   "devDependencies": {
+    "ganache-cli": "^6.1.4",
     "openzeppelin-solidity": "^1.10.0",
+    "solidity-coverage": "^0.5.5",
+    "solium": "^1.1.7",
     "truffle": "^4.1.13"
   }
 }
