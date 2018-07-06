@@ -20,7 +20,7 @@ contract BsktDataRegistry is IDataRegistry, Ownable {
     feeToken = ERC20(_feeToken);
   }
 
-  function add(bytes32 _id, bytes _data) public onlyOwner {
+  function set(bytes32 _id, bytes _data) public onlyOwner {
     entries[_id] = _data;
   }
 
