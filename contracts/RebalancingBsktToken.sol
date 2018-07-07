@@ -2,29 +2,48 @@ pragma solidity 0.4.24;
 
 
 import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
+import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
+import "openzeppelin-solidity/contracts/lifecycle/Pausable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/DetailedERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol"; 
-import "zeppelin-solidity/contracts/lifecycle/Pausable.sol";
 
 import "./IBsktToken.sol";
 import "./Math.sol";
 
 
 contract RebalancingBsktToken is
-  DetailedERC20
-  IBsktToken,
+  DetailedERC20,
   Pausable,
-  StandardToken,
+  StandardToken
 {
 
+  using AddressArrayUtils for address[];
   using SafeMath for uint256;
   using UIntArrayUtils for uint256[];
 
   // creation Size? => log min quantities?
   address[] public addresses;
   uint256[] public quantities;
+
+  // === EVENTS ===
+
+  event Create(address indexed creator, uint256 amount);
+  event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
+
+  // === MODIFIERS ===
+
+  /// @notice Requires value to be divisible by creationUnit
+  /// @param value Number to be checked
+  modifier requireMultiple(uint256 value) {
+    // TODO: inefficient since creationSize is used later in the functions that use this modifier
+    uint256 _creationSize = creationSize();
+    require((value % _creationSize) == 0);
+    _;
+  }
+
+  // === CONSTRUCTOR ===
 
   constructor(
     address[] _addresses,
@@ -34,24 +53,28 @@ contract RebalancingBsktToken is
   ) DetailedERC20(_name, _symbol, 18)
     public
   {
+    require(_addresses.length > 0);
+    require(_addresses.length == _quantities.length);
     addresses = _addresses;
     quantities = _quantities;
   }
 
+  // === EXTERNAL FUNCTIONS ===
+
   function issue(uint256 amount)
     external
     whenNotPaused()
-    requireNonZero(amount)
     requireMultiple(amount)
   {
-    // Check overflow
+    require(amount > 0);
     require((totalSupply_ + amount) > totalSupply_);
 
-    for (uint256 i = 0; i < tokens.length; i++) {
-      TokenInfo memory token = tokens[i];
-      ERC20 erc20 = ERC20(token.addr);
-      uint256 amount = amount.div(creationUnit).mul(token.quantity);
-      require(erc20.transferFrom(msg.sender, address(this), amount));
+    uint256 _creationSize = creationSize();
+    uint256 tokensLength = addresses.length;
+    for (uint256 i = 0; i < tokensLength; i++) {
+      ERC20 erc20 = ERC20(addresses[i]);
+      uint256 amountTokens = amount.div(_creationSize).mul(quantities[i]);
+      require(erc20.transferFrom(msg.sender, address(this), amountTokens));
     }
 
     mint(msg.sender, amount);
@@ -60,29 +83,27 @@ contract RebalancingBsktToken is
 
   function redeem(uint256 amount, address[] tokensToSkip)
     external
-    requireNonZero(amount)
     requireMultiple(amount)
   {
+    require(amount > 0);
     require(amount <= totalSupply_);
     require(amount <= balances[msg.sender]);
-    require(tokensToSkip.length <= tokens.length);
-    // Total supply check not required since a user would have to have
-    // balance greater than the total supply
+    uint256 tokensLength = addresses.length;
+    require(tokensToSkip.length <= tokensLength);
 
     // Burn before to prevent re-entrancy
     burn(msg.sender, amount);
 
-    for (uint256 i = 0; i < tokens.length; i++) {
-      TokenInfo memory token = tokens[i];
-      ERC20 erc20 = ERC20(token.addr);
-      uint256 index;
-      bool ok;
-      (index, ok) = tokensToSkip.index(token.addr);
-      if (ok) {
+    uint256 _creationSize = creationSize();
+    for (uint256 i = 0; i < tokensLength; i++) {
+      address tokenAddress = addresses[i];
+      ERC20 erc20 = ERC20(tokenAddress);
+      bool isIn = tokensToSkip.contains(tokenAddress);
+      if (isIn) {
         continue;
       }
-      uint256 amount = amount.div(creationUnit).mul(token.quantity);
-      require(erc20.transfer(msg.sender, amount));
+      uint256 amountTokens = amount.div(_creationSize).mul(quantities[i]);
+      require(erc20.transfer(msg.sender, amountTokens));
     }
     emit Redeem(msg.sender, amount, tokensToSkip);
   }
@@ -125,6 +146,7 @@ contract RebalancingBsktToken is
     }
   }
 
+  // TODO: Make stored and only update on rebalance. Should be cheaper on gas
   function creationSize() view public returns(uint256) {
     uint256 optimal = quantities.map(logFloor).reduce(min);
     return Math.max(uint256(decimals).sub(optimal), 1);

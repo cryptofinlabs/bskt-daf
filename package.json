@@ -24,7 +24,7 @@
   "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
   "dependencies": {},
   "devDependencies": {
-    "cryptofin-solidity": "0.0.2",
+    "cryptofin-solidity": "0.0.3",
     "ganache-cli": "^6.1.4",
     "openzeppelin-solidity": "^1.10.0",
     "solidity-coverage": "^0.5.5",
