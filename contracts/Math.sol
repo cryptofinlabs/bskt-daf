@@ -21,20 +21,12 @@ library Math {
     return i;
   }
 
-  function min(uint256 a, uint256 b) public pure returns(uint256) {
-    if (a < b) {
-      return a;
-    } else {
-      return b;
-    }
+  function max(uint256 a, uint256 b) public pure returns (uint256) {
+    return a >= b ? a : b;
   }
 
-  function max(uint256 a, uint256 b) public pure returns(uint256) {
-    if (a > b) {
-      return a;
-    } else {
-      return b;
-    }
+  function min(uint256 a, uint256 b) public pure returns (uint256) {
+    return a < b ? a : b;
   }
 
 }
