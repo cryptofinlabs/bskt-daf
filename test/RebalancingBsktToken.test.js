@@ -5,12 +5,17 @@ const ERC20Token = artifacts.require('ERC20Token');
 contract('RebalancingBsktToken', function(accounts) {
 
   context('with', function() {
+    let tokenA, tokenB, tokenC, tokenD, tokenE;
     let rebalancingBsktToken;
 
     beforeEach(async function () {
-      token = await ERC20Token.new({from: accounts[0]});
+      tokenA = await ERC20Token.new({from: accounts[0]});
+      tokenB = await ERC20Token.new({from: accounts[0]});
+      tokenC = await ERC20Token.new({from: accounts[0]});
+      tokenD = await ERC20Token.new({from: accounts[0]});
+      tokenE = await ERC20Token.new({from: accounts[0]});
       rebalancingBsktToken = await RebalancingBsktToken.new(
-        [token.address],
+        [tokenA.address, tokenB.address, tokenC.address, tokenD.address, tokenE.address],
         [1000, 10000, 31200, 123013, 100],
         'RebalancingBsktToken',
         'RBT',
