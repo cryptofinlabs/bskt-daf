@@ -1,4 +1,5 @@
 pragma solidity 0.4.24;
+pragma experimental ABIEncoderV2;
 
 
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
@@ -15,6 +16,7 @@ contract BsktDataRegistry is IDataRegistry, Ownable {
   ERC20 public feeToken;
   uint256 public readFeeAmount;
   mapping(bytes32 => bytes) public entries;
+  bytes32[] public keys;
 
   constructor(address _feeToken) public {
     feeToken = ERC20(_feeToken);

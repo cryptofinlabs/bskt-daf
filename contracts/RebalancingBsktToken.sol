@@ -10,6 +10,7 @@ import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol"; 
 
 import "./IBsktToken.sol";
+import "./BsktRegistry.sol";
 import "./Math.sol";
 
 
@@ -23,14 +24,18 @@ contract RebalancingBsktToken is
   using SafeMath for uint256;
   using UIntArrayUtils for uint256[];
 
-  // creation Size? => log min quantities?
-  address[] public addresses;
+  address[] public tokens;
   uint256[] public quantities;
+  BsktRegistry public registry;
+  uint256 public rebalancingInterval;
+  uint256 public rebalancingDuration;
 
   // === EVENTS ===
 
   event Create(address indexed creator, uint256 amount);
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
+  event RebalanceStart(address caller);
+  event RebalanceEnd();
 
   // === MODIFIERS ===
 
@@ -46,17 +51,20 @@ contract RebalancingBsktToken is
   // === CONSTRUCTOR ===
 
   constructor(
-    address[] _addresses,
+    // should we remove these in favour of just specifying registry and setting to that initially?
+    address[] _tokens,
     uint256[] _quantities,
+    address _registry,
     string _name,
     string _symbol
   ) DetailedERC20(_name, _symbol, 18)
     public
   {
-    require(_addresses.length > 0);
-    require(_addresses.length == _quantities.length);
-    addresses = _addresses;
+    require(_tokens.length > 0);
+    require(_tokens.length == _quantities.length);
+    tokens = _tokens;
     quantities = _quantities;
+    registry = BsktRegistry(_registry);
   }
 
   // === EXTERNAL FUNCTIONS ===
@@ -70,9 +78,9 @@ contract RebalancingBsktToken is
     require((totalSupply_ + amount) > totalSupply_);
 
     uint256 _creationSize = creationSize();
-    uint256 tokensLength = addresses.length;
+    uint256 tokensLength = tokens.length;
     for (uint256 i = 0; i < tokensLength; i++) {
-      ERC20 erc20 = ERC20(addresses[i]);
+      ERC20 erc20 = ERC20(tokens[i]);
       uint256 amountTokens = amount.div(_creationSize).mul(quantities[i]);
       require(erc20.transferFrom(msg.sender, address(this), amountTokens));
     }
@@ -88,7 +96,7 @@ contract RebalancingBsktToken is
     require(amount > 0);
     require(amount <= totalSupply_);
     require(amount <= balances[msg.sender]);
-    uint256 tokensLength = addresses.length;
+    uint256 tokensLength = tokens.length;
     require(tokensToSkip.length <= tokensLength);
 
     // Burn before to prevent re-entrancy
@@ -96,7 +104,7 @@ contract RebalancingBsktToken is
 
     uint256 _creationSize = creationSize();
     for (uint256 i = 0; i < tokensLength; i++) {
-      address tokenAddress = addresses[i];
+      address tokenAddress = tokens[i];
       ERC20 erc20 = ERC20(tokenAddress);
       bool isIn = tokensToSkip.contains(tokenAddress);
       if (isIn) {
@@ -108,31 +116,63 @@ contract RebalancingBsktToken is
     emit Redeem(msg.sender, amount, tokensToSkip);
   }
 
-  function redeem() public {
+  function rebalance(address _token) external {
+    //getRebalanceDeltas();
+    //// set up auctions
+    //uint256 targetAmount = getTargetAmount(_token);
+    //// do we account balances in BsktToken, or let each token implement it?
+    //// what if token's balanceOf is malicious?
+     //uint256 tokenBalance = ERC20(token).balanceOf(address(this));
+     //if (targetAmount > tokenBalance) {
+       //// dutch auction (ask, offer)
+     //} else if (targetAmount < tokenBalance) {
+       //// dutch auction (ask, offer)
+     //} else {
+       //return;
+     //}
   }
 
-  function rebalance() public {
+  // naming of target vs all vs registry?
+  // TODO: handle invalid data
+  // deltas required. + means this contract needs to buy, - means sell
+  function getRebalanceDeltas() external view returns(address[] memory, int256[] memory) {
+    address[] memory registryTokens = registry.getTokens();
+    address[] memory targetTokens = registryTokens.union(tokens);
+    uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
+
+    uint256 length = targetTokens.length;
+    int256[] memory deltas = new int256[](length);
+    for (uint256 i = 0; i < length; i++) {
+      ERC20 erc20 = ERC20(targetTokens[i]);
+      uint256 balance = erc20.balanceOf(address(this));
+      // Ensure no overflow
+      require(balance == uint256(int256(balance)));  // should this be an assert?
+      // TODO: add safemath
+      deltas[i] = int256(targetQuantities[i]) - (int256(balance));
+    }
+    return (targetTokens, deltas);
   }
 
   function creationUnit() view public returns(address[], uint256[]) {
-    uint256 numTokens = addresses.length;
-    address[] memory _addresses = new address[](numTokens);
+    uint256 numTokens = tokens.length;
+    address[] memory _tokens = new address[](numTokens);
     uint256[] memory _quantities = new uint256[](numTokens);
-    for(uint256 i = 0; i < numTokens; i += 1) {
+    for (uint256 i = 0; i < numTokens; i += 1) {
       _quantities[i] = quantities[i].div(totalSupply_);
     }
-    return (_addresses, _quantities);
+    return (_tokens, _quantities);
 
   }
 
   // `map` doesn't work if these are in a library
   function logFloor(uint256 n) public pure returns(uint256) {
+    uint256 _n = n;
     uint256 i = 0;
     while(true) {
-      if (n < 10) {
+      if (_n < 10) {
         break;
       }
-      n /= 10;
+      _n /= 10;
       i += 1;
     }
     return i;

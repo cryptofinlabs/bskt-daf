@@ -22,7 +22,9 @@
     "url": "https://github.com/cryptofinlabs/bskt-daf/issues"
   },
   "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
-  "dependencies": {},
+  "dependencies": {
+    "underscore": "^1.9.1"
+  },
   "devDependencies": {
     "cryptofin-solidity": "0.0.3",
     "ganache-cli": "^6.1.4",

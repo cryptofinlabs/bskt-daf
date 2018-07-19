@@ -10,12 +10,13 @@ library Math {
   event SomeEvent(uint256 value);
 
   function logFloor(uint256 n) public pure returns(uint256) {
+    uint256 _n = n;
     uint256 i = 0;
     while(true) {
-      if (n < 10) {
+      if (_n < 10) {
         break;
       }
-      n /= 10;
+      _n /= 10;
       i += 1;
     }
     return i;
