@@ -1,16 +1,20 @@
 pragma solidity 0.4.24;
+pragma experimental ABIEncoderV2;
 
 
-import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
+import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
+import "cryptofin-solidity/contracts/rationals/Rational.sol";
+import "cryptofin-solidity/contracts/rationals/RationalMath.sol";
 import "openzeppelin-solidity/contracts/lifecycle/Pausable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/DetailedERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol"; 
 
-import "./IBsktToken.sol";
 import "./BsktRegistry.sol";
+import "./Escrow.sol";
+import "./IBsktToken.sol";
 import "./Math.sol";
 
 
@@ -21,14 +25,26 @@ contract RebalancingBsktToken is
 {
 
   using AddressArrayUtils for address[];
+  using RationalMath for Rational.Rational256;
   using SafeMath for uint256;
   using UIntArrayUtils for uint256[];
+
+  struct Bid {
+    address bidder;
+    address[] tokens;
+    uint256[] quantities;
+  }
 
   address[] public tokens;
   uint256[] public quantities;
   BsktRegistry public registry;
+  Escrow public escrow;
+  uint256 public rebalancingPeriodOffset;
   uint256 public rebalancingInterval;
   uint256 public rebalancingDuration;
+
+  // Maybe just decompose
+  Bid public bestBid;
 
   // === EVENTS ===
 
@@ -36,6 +52,8 @@ contract RebalancingBsktToken is
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event RebalanceStart(address caller);
   event RebalanceEnd();
+
+  event EscrowDeployed();
 
   // === MODIFIERS ===
 
@@ -48,6 +66,21 @@ contract RebalancingBsktToken is
     _;
   }
 
+  modifier requireSortedRational256(Rational.Rational256[] memory A) {
+    for (uint256 i = 1; i < A.length; i++) {
+      require(A[i - 1].lte(A[i]));
+    }
+    _;
+  }
+
+  modifier rebalancingPeriod() {
+    // TODO: use rebalancingPeriodOffset
+    uint256 startInterval = now.div(rebalancingInterval).mul(rebalancingInterval);
+    uint256 endInterval = startInterval.add(rebalancingDuration);
+    require(startInterval <= now <= endInterval);
+    _;
+  }
+
   // === CONSTRUCTOR ===
 
   constructor(
@@ -55,6 +88,7 @@ contract RebalancingBsktToken is
     address[] _tokens,
     uint256[] _quantities,
     address _registry,
+    address _escrow,
     string _name,
     string _symbol
   ) DetailedERC20(_name, _symbol, 18)
@@ -65,6 +99,10 @@ contract RebalancingBsktToken is
     tokens = _tokens;
     quantities = _quantities;
     registry = BsktRegistry(_registry);
+    escrow = Escrow(_escrow);
+
+    escrow = new Escrow(address(this));
+    emit EscrowDeployed();
   }
 
   // === EXTERNAL FUNCTIONS ===
@@ -132,14 +170,80 @@ contract RebalancingBsktToken is
      //}
   }
 
+  // Assumes tokens and quantities are sorted
+  // Returns true if A is better, false if B is better
+  // If equal, favors A
+  function compareBids(
+    address[] memory tokensA,
+    uint256[] memory quantitiesA,
+    address[] memory tokensB,
+    uint256[] memory quantitiesB
+  )
+    public
+    view
+    returns (bool)
+  {
+    P
+    require(tokensA.length == quantitiesA.length);
+    require(tokensA.length == tokensB.length);
+    require(tokensA.length == quantitiesB.length);
+    (address[] memory deltaTokens, uint256[] memory deltaQuantities) = getRebalanceDeltas();
+    Rational.Rational256[] memory fillProportionA = new Rational.Rational256[](deltaTokens.length);
+    Rational.Rational256[] memory fillProportionB = new Rational.Rational256[](deltaTokens.length);
+    for (uint256 i = 0; i < deltaTokens.length; i++) {
+      // TODO: consider negative deltas!
+      // if deltaQuantities[i] < 0
+      fillProportionA[i] = Rational.Rational256({ n: quantitiesA[i], d: deltaQuantities[i]});
+      fillProportionB[i] = Rational.Rational256({ n: quantitiesB[i], d: deltaQuantities[i]});
+    }
+    return compareSortedRational256s(fillProportionA, fillProportionB);
+  }
+
+  // Assumes fillProportions are sorted
+  // Returns true if A is better, false if B is better
+  // If equal, favors B
+  function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
+    public
+    requireSortedRational256
+    returns (bool)
+  {
+    for (uint256 i = 0; i < A.length; i++) {
+      if (A[i].gt(B[i])) {
+        return true;
+      } else if (A[i].lt(B[i])) {
+        return false;
+      } else {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  function bid(address[] _tokens, uint256[] _quantities) external {
+    Bid memory _bestBid = bestBid;
+    if (
+      _bestBid.bidder == address(0) ||  // No bid yet
+      compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)
+    ) {
+      if (_bestBid.bidder != address(0)) {
+        escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities);
+      }
+      bestBid = Bid({
+        bidder: msg.sender,
+        tokens: _tokens,
+        quantities: _quantities
+      });
+      escrow.escrowBid(_tokens, msg.sender, _quantities);
+    }
+  }
+
   // naming of target vs all vs registry?
   // TODO: handle invalid data
   // deltas required. + means this contract needs to buy, - means sell
-  function getRebalanceDeltas() external view returns(address[] memory, int256[] memory) {
+  function getRebalanceDeltas() public view returns(address[] memory, int256[] memory) {
     address[] memory registryTokens = registry.getTokens();
     address[] memory targetTokens = registryTokens.union(tokens);
     uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
-
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
     for (uint256 i = 0; i < length; i++) {
@@ -179,11 +283,7 @@ contract RebalancingBsktToken is
   }
 
   function min(uint256 a, uint256 b) public pure returns(uint256) {
-    if (a < b) {
-      return a;
-    } else {
-      return b;
-    }
+    return a < b ? a : b;
   }
 
   // TODO: Make stored and only update on rebalance. Should be cheaper on gas
