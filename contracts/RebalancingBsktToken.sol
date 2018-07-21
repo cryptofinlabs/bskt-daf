@@ -32,7 +32,7 @@ contract RebalancingBsktToken is
   struct Bid {
     address bidder;
     address[] tokens;
-    uint256[] quantities;
+    int256[] quantities;
   }
 
   address[] public tokens;
@@ -77,7 +77,8 @@ contract RebalancingBsktToken is
     // TODO: use rebalancingPeriodOffset
     uint256 startInterval = now.div(rebalancingInterval).mul(rebalancingInterval);
     uint256 endInterval = startInterval.add(rebalancingDuration);
-    require(startInterval <= now <= endInterval);
+    require(startInterval <= now);
+    require(now <= endInterval);
     _;
   }
 
@@ -99,7 +100,6 @@ contract RebalancingBsktToken is
     tokens = _tokens;
     quantities = _quantities;
     registry = BsktRegistry(_registry);
-    escrow = Escrow(_escrow);
 
     escrow = new Escrow(address(this));
     emit EscrowDeployed();
@@ -175,28 +175,58 @@ contract RebalancingBsktToken is
   // If equal, favors A
   function compareBids(
     address[] memory tokensA,
-    uint256[] memory quantitiesA,
+    int256[] memory quantitiesA,
     address[] memory tokensB,
-    uint256[] memory quantitiesB
+    int256[] memory quantitiesB
   )
     public
     view
     returns (bool)
   {
-    P
     require(tokensA.length == quantitiesA.length);
     require(tokensA.length == tokensB.length);
     require(tokensA.length == quantitiesB.length);
-    (address[] memory deltaTokens, uint256[] memory deltaQuantities) = getRebalanceDeltas();
+    (address[] memory deltaTokens, int256[] memory deltaQuantities) = getRebalanceDeltas();
     Rational.Rational256[] memory fillProportionA = new Rational.Rational256[](deltaTokens.length);
     Rational.Rational256[] memory fillProportionB = new Rational.Rational256[](deltaTokens.length);
     for (uint256 i = 0; i < deltaTokens.length; i++) {
-      // TODO: consider negative deltas!
-      // if deltaQuantities[i] < 0
-      fillProportionA[i] = Rational.Rational256({ n: quantitiesA[i], d: deltaQuantities[i]});
-      fillProportionB[i] = Rational.Rational256({ n: quantitiesB[i], d: deltaQuantities[i]});
+      if (deltaQuantities[i] > 0) {
+        require(quantitiesA[i] >= 0);
+        require(quantitiesB[i] >= 0);
+        fillProportionA[i] = Rational.Rational256({ n: uint256(quantitiesA[i]), d: uint256(deltaQuantities[i]) });
+        fillProportionB[i] = Rational.Rational256({ n: uint256(quantitiesB[i]), d: uint256(deltaQuantities[i]) });
+       } else {
+         // If tokens are being sold (negative delta), it's not relevant to comparison
+         // Entry will be 0
+         // It's assumed bidders act in their own economic interest, so they
+         // wouldn't leave any tokens on the table
+         continue;
+       }
     }
-    return compareSortedRational256s(fillProportionA, fillProportionB);
+    return true;
+    //return compareSortedRational256s(fillProportionA, fillProportionB);
+  }
+
+  function getBidFillProportion(
+    address[] bidTokens,
+    int256[] bidQuantities,
+    address[] deltaTokens,
+    int256[] deltaQuantities
+  )
+    external
+    pure
+    returns (Rational.Rational256[] memory)
+  {
+    Rational.Rational256[] memory fillProportion = new Rational.Rational256[](deltaTokens.length);
+    for (uint256 i = 0; i < deltaTokens.length; i++) {
+      // TODO: consider negative deltas!
+      if (deltaQuantities[i] > 0) {
+        require(bidQuantities[i] >= 0);
+        fillProportion[i] = Rational.Rational256({ n: uint256(bidQuantities[i]), d: uint256(deltaQuantities[i]) });
+       } else {
+         continue;  // Entry will be 0
+       }
+    }
   }
 
   // Assumes fillProportions are sorted
@@ -204,7 +234,8 @@ contract RebalancingBsktToken is
   // If equal, favors B
   function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
     public
-    requireSortedRational256
+    requireSortedRational256(A)
+    requireSortedRational256(B)
     returns (bool)
   {
     for (uint256 i = 0; i < A.length; i++) {
@@ -219,7 +250,7 @@ contract RebalancingBsktToken is
     return false;
   }
 
-  function bid(address[] _tokens, uint256[] _quantities) external {
+  function bid(address[] _tokens, int256[] _quantities) external {
     Bid memory _bestBid = bestBid;
     if (
       _bestBid.bidder == address(0) ||  // No bid yet
@@ -249,15 +280,14 @@ contract RebalancingBsktToken is
     for (uint256 i = 0; i < length; i++) {
       ERC20 erc20 = ERC20(targetTokens[i]);
       uint256 balance = erc20.balanceOf(address(this));
-      // Ensure no overflow
-      require(balance == uint256(int256(balance)));  // should this be an assert?
+      // TODO: ensure no overflow
       // TODO: add safemath
       deltas[i] = int256(targetQuantities[i]) - (int256(balance));
     }
     return (targetTokens, deltas);
   }
 
-  function creationUnit() view public returns(address[], uint256[]) {
+  function creationUnit() view public returns(address[] memory, uint256[] memory) {
     uint256 numTokens = tokens.length;
     address[] memory _tokens = new address[](numTokens);
     uint256[] memory _quantities = new uint256[](numTokens);
