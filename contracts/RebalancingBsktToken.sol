@@ -57,6 +57,9 @@ contract RebalancingBsktToken is
   event EscrowDeployed();
   event OK();
   event LogAddresses(address[] a);
+  event LogQuantities(uint256[] a);
+  event LogInt256s(int256[] a);
+  event LogUInt256(uint256 n);
 
   // === MODIFIERS ===
 
@@ -276,26 +279,29 @@ contract RebalancingBsktToken is
   function getRebalanceDeltas()
     public
     //view
-    returns(address[] memory, int256[] memory)
+    returns (address[] memory, int256[] memory)
   {
     address[] memory registryTokens = registry.getTokens();
     address[] memory targetTokens = registryTokens.union(tokens);
     emit LogAddresses(targetTokens);
     uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
+    emit LogQuantities(targetQuantities);
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
     for (uint256 i = 0; i < length; i++) {
       ERC20 erc20 = ERC20(targetTokens[i]);
       // assert that balance is >= quantity recorded for that token
       uint256 balance = erc20.balanceOf(address(this));
+      emit LogUInt256(balance);
       // TODO: ensure no overflow
       // TODO: add safemath
       deltas[i] = int256(targetQuantities[i]) - (int256(balance));
     }
+    emit LogInt256s(deltas);
     return (targetTokens, deltas);
   }
 
-  function creationUnit() view public returns(address[] memory, uint256[] memory) {
+  function creationUnit() view public returns (address[] memory, uint256[] memory) {
     uint256 numTokens = tokens.length;
     address[] memory _tokens = new address[](numTokens);
     uint256[] memory _quantities = new uint256[](numTokens);
@@ -307,7 +313,7 @@ contract RebalancingBsktToken is
   }
 
   // `map` doesn't work if these are in a library
-  function logFloor(uint256 n) public pure returns(uint256) {
+  function logFloor(uint256 n) public pure returns (uint256) {
     uint256 _n = n;
     uint256 i = 0;
     while(true) {
@@ -320,14 +326,22 @@ contract RebalancingBsktToken is
     return i;
   }
 
-  function min(uint256 a, uint256 b) public pure returns(uint256) {
+  function min(uint256 a, uint256 b) public pure returns (uint256) {
     return a < b ? a : b;
   }
 
+  function pow(uint256 a, uint256 b) public pure returns (uint256) {
+    uint256 product = 1;
+    for (uint256 i = 0; i < b; i++) {
+      product = product.mul(a);
+    }
+    return product;
+  }
+
   // TODO: Make stored and only update on rebalance. Should be cheaper on gas
-  function creationSize() view public returns(uint256) {
+  function creationSize() view public returns (uint256) {
     uint256 optimal = quantities.map(logFloor).reduce(min);
-    return Math.max(uint256(decimals).sub(optimal), 1);
+    return pow(10, Math.max(uint256(decimals).sub(optimal), 1));
   }
 
   // @dev Mints new tokens

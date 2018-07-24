@@ -9,10 +9,11 @@ const BigNumber = require('bignumber.js');
 contract('RebalancingBsktToken', function(accounts) {
 
   async function setupRegistryStateA(dataManager, bsktRegistry, tokenA, tokenB, tokenC, tokenD, tokenE) {
-    await bsktRegistry.set(0, tokenA.address, 10, { from: dataManager });
-    await bsktRegistry.set(1, tokenB.address, 10, { from: dataManager });
-    await bsktRegistry.set(2, tokenC.address, 10, { from: dataManager });
-    await bsktRegistry.set(3, tokenD.address, 10, { from: dataManager });
+    await bsktRegistry.set(0, tokenA.address, 100, { from: dataManager });
+    await bsktRegistry.set(1, tokenB.address, 100, { from: dataManager });
+    await bsktRegistry.set(2, tokenC.address, 100, { from: dataManager });
+    await bsktRegistry.set(3, tokenD.address, 100, { from: dataManager });
+    await bsktRegistry.set(4, tokenE.address, 100, { from: dataManager });
   }
 
   async function setupRegistryStateB(dataManager, bsktRegistry, tokenA, tokenB, tokenC, tokenD, tokenE) {
@@ -54,10 +55,10 @@ contract('RebalancingBsktToken', function(accounts) {
       assert.equal(targetTokens[1], tokenB.address);
       assert.equal(targetTokens[2], tokenC.address);
       assert.equal(targetTokens[3], tokenD.address);
-      assert.isTrue(deltas[0].eq(new BigNumber(10)));
-      assert.isTrue(deltas[1].eq(new BigNumber(10)));
-      assert.isTrue(deltas[2].eq(new BigNumber(10)));
-      assert.isTrue(deltas[3].eq(new BigNumber(10)));
+      assert.isTrue(deltas[0].eq(new BigNumber(100)));
+      assert.isTrue(deltas[1].eq(new BigNumber(100)));
+      assert.isTrue(deltas[2].eq(new BigNumber(100)));
+      assert.isTrue(deltas[3].eq(new BigNumber(100)));
     });
 
 
@@ -91,8 +92,8 @@ contract('RebalancingBsktToken', function(accounts) {
       tokenE = await ERC20Token.new({ from: owner });
 
       rebalancingBsktToken = await RebalancingBsktToken.new(
-        [tokenA.address, tokenB.address, tokenC.address, tokenD.address, tokenE.address],
-        [1000, 10000, 31200, 123013, 100],
+        [tokenA.address, tokenB.address, tokenC.address, tokenD.address],
+        [100, 5000, 31200, 123013],
         bsktRegistry.address,
         'RebalancingBsktToken',
         'RBT',
@@ -113,8 +114,8 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
     it('should correctly compute creationSize', async function() {
-      let creationSize = await rebalancingBsktToken.creationSize.call();
-      assert.equal(creationSize, 16, 'creationSize should be 16');
+      const creationSize = await rebalancingBsktToken.creationSize.call();
+      assert.equal(creationSize, 10**16, 'creationSize should be 1e16');
     });
 
     it('should issue', async function() {
@@ -124,11 +125,28 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
     it('should get rebalance deltas', async function() {
-      // TODO: issue to have some balance. this is a valid test tho
       await setupRegistryStateA(dataManager, bsktRegistry, tokenA, tokenB, tokenC, tokenD, tokenE);
       let [targetTokens, deltas] = await rebalancingBsktToken.getRebalanceDeltas.call();
       console.log('targetTokens', targetTokens);
       console.log('deltas', deltas);
+      console.log('delta', deltas[0].toNumber());
+      console.log('delta', deltas[1].toNumber());
+      console.log('delta', deltas[2].toNumber());
+      console.log('delta', deltas[3].toNumber());
+      console.log('delta', deltas[4].toNumber());
+    });
+
+    it('should get rebalance deltas for Bskt with some balances', async function() {
+      await rebalancingBsktToken.issue(10**16, { from: user1 });
+      await setupRegistryStateA(dataManager, bsktRegistry, tokenA, tokenB, tokenC, tokenD, tokenE);
+      let [targetTokens, deltas] = await rebalancingBsktToken.getRebalanceDeltas.call();
+      console.log('targetTokens', targetTokens);
+      console.log('deltas', deltas);
+      console.log('delta', deltas[0].toNumber());
+      console.log('delta', deltas[1].toNumber());
+      console.log('delta', deltas[2].toNumber());
+      console.log('delta', deltas[3].toNumber());
+      console.log('delta', deltas[4].toNumber());
     });
 
   });
