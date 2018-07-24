@@ -1,3 +1,4 @@
+// WARNING: DO NOT USE THIS FILE, SEE BsktRegistry.sol INSTEAD.
 pragma solidity 0.4.24;
 pragma experimental ABIEncoderV2;
 

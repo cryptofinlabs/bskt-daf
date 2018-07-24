@@ -23,14 +23,15 @@
   },
   "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
   "dependencies": {
-    "underscore": "^1.9.1"
   },
   "devDependencies": {
+    "bignumber.js": "^7.2.1",
     "cryptofin-solidity": "0.0.3",
     "ganache-cli": "^6.1.4",
     "openzeppelin-solidity": "^1.10.0",
     "solidity-coverage": "^0.5.5",
     "solium": "^1.1.7",
-    "truffle": "^4.1.13"
+    "truffle": "^4.1.13",
+    "underscore": "^1.9.1"
   }
 }

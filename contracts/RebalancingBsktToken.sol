@@ -1,5 +1,6 @@
 pragma solidity 0.4.24;
-pragma experimental ABIEncoderV2;
+pragma experimental "v0.5.0";
+//pragma experimental ABIEncoderV2;
 
 
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
@@ -36,7 +37,7 @@ contract RebalancingBsktToken is
   }
 
   address[] public tokens;
-  uint256[] public quantities;
+  uint256[] public quantities;  // is this needed? Could read balances from token contracts directly, though a potential risk
   BsktRegistry public registry;
   Escrow public escrow;
   uint256 public rebalancingPeriodOffset;
@@ -54,6 +55,8 @@ contract RebalancingBsktToken is
   event RebalanceEnd();
 
   event EscrowDeployed();
+  event OK();
+  event LogAddresses(address[] a);
 
   // === MODIFIERS ===
 
@@ -89,13 +92,12 @@ contract RebalancingBsktToken is
     address[] _tokens,
     uint256[] _quantities,
     address _registry,
-    address _escrow,
     string _name,
     string _symbol
   ) DetailedERC20(_name, _symbol, 18)
     public
   {
-    require(_tokens.length > 0);
+    //require(_tokens.length > 0);  // Will need this to prevent attack - can mint infinite tokens
     require(_tokens.length == _quantities.length);
     tokens = _tokens;
     quantities = _quantities;
@@ -180,7 +182,7 @@ contract RebalancingBsktToken is
     int256[] memory quantitiesB
   )
     public
-    view
+    //view
     returns (bool)
   {
     require(tokensA.length == quantitiesA.length);
@@ -207,48 +209,48 @@ contract RebalancingBsktToken is
     //return compareSortedRational256s(fillProportionA, fillProportionB);
   }
 
-  function getBidFillProportion(
-    address[] bidTokens,
-    int256[] bidQuantities,
-    address[] deltaTokens,
-    int256[] deltaQuantities
-  )
-    external
-    pure
-    returns (Rational.Rational256[] memory)
-  {
-    Rational.Rational256[] memory fillProportion = new Rational.Rational256[](deltaTokens.length);
-    for (uint256 i = 0; i < deltaTokens.length; i++) {
-      // TODO: consider negative deltas!
-      if (deltaQuantities[i] > 0) {
-        require(bidQuantities[i] >= 0);
-        fillProportion[i] = Rational.Rational256({ n: uint256(bidQuantities[i]), d: uint256(deltaQuantities[i]) });
-       } else {
-         continue;  // Entry will be 0
-       }
-    }
-  }
+  //function getBidFillProportion(
+    //address[] bidTokens,
+    //int256[] bidQuantities,
+    //address[] deltaTokens,
+    //int256[] deltaQuantities
+  //)
+    //external
+    //pure
+    //returns (Rational.Rational256[] memory)
+  //{
+    //Rational.Rational256[] memory fillProportion = new Rational.Rational256[](deltaTokens.length);
+    //for (uint256 i = 0; i < deltaTokens.length; i++) {
+      //// TODO: consider negative deltas!
+      //if (deltaQuantities[i] > 0) {
+        //require(bidQuantities[i] >= 0);
+        //fillProportion[i] = Rational.Rational256({ n: uint256(bidQuantities[i]), d: uint256(deltaQuantities[i]) });
+       //} else {
+         //continue;  // Entry will be 0
+       //}
+    //}
+  //}
 
-  // Assumes fillProportions are sorted
-  // Returns true if A is better, false if B is better
-  // If equal, favors B
-  function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
-    public
-    requireSortedRational256(A)
-    requireSortedRational256(B)
-    returns (bool)
-  {
-    for (uint256 i = 0; i < A.length; i++) {
-      if (A[i].gt(B[i])) {
-        return true;
-      } else if (A[i].lt(B[i])) {
-        return false;
-      } else {
-        continue;
-      }
-    }
-    return false;
-  }
+  //// Assumes fillProportions are sorted
+  //// Returns true if A is better, false if B is better
+  //// If equal, favors B
+  //function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
+    //public
+    //requireSortedRational256(A)
+    //requireSortedRational256(B)
+    //returns (bool)
+  //{
+    //for (uint256 i = 0; i < A.length; i++) {
+      //if (A[i].gt(B[i])) {
+        //return true;
+      //} else if (A[i].lt(B[i])) {
+        //return false;
+      //} else {
+        //continue;
+      //}
+    //}
+    //return false;
+  //}
 
   function bid(address[] _tokens, int256[] _quantities) external {
     Bid memory _bestBid = bestBid;
@@ -271,14 +273,20 @@ contract RebalancingBsktToken is
   // naming of target vs all vs registry?
   // TODO: handle invalid data
   // deltas required. + means this contract needs to buy, - means sell
-  function getRebalanceDeltas() public view returns(address[] memory, int256[] memory) {
+  function getRebalanceDeltas()
+    public
+    //view
+    returns(address[] memory, int256[] memory)
+  {
     address[] memory registryTokens = registry.getTokens();
     address[] memory targetTokens = registryTokens.union(tokens);
+    emit LogAddresses(targetTokens);
     uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
     for (uint256 i = 0; i < length; i++) {
       ERC20 erc20 = ERC20(targetTokens[i]);
+      // assert that balance is >= quantity recorded for that token
       uint256 balance = erc20.balanceOf(address(this));
       // TODO: ensure no overflow
       // TODO: add safemath
