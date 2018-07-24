@@ -22,8 +22,7 @@
     "url": "https://github.com/cryptofinlabs/bskt-daf/issues"
   },
   "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
-  "dependencies": {
-  },
+  "dependencies": {},
   "devDependencies": {
     "bignumber.js": "^7.2.1",
     "cryptofin-solidity": "0.0.3",

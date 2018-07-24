@@ -38,8 +38,8 @@ contract('BsktRegistry', function(accounts) {
 
     it('should set first entry', async function() {
       await bsktRegistry.set(0, tokenA.address, 10, { from: dataManager });
-      const tokens = await bsktRegistry.getTokens();
-      const quantities = await bsktRegistry.getAllQuantities();
+      const tokens = await bsktRegistry.getTokens.call();
+      const quantities = await bsktRegistry.getAllQuantities.call();
       assert.equal(tokens.length, 1, 'should be one entry');
       assert.equal(tokens.length, quantities.length, 'should have same length');
       assert.equal(tokens[0], tokenA.address, 'should be correct address');
