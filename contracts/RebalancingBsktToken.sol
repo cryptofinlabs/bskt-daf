@@ -159,7 +159,15 @@ contract RebalancingBsktToken is
     emit Redeem(msg.sender, amount, tokensToSkip);
   }
 
-  function rebalance(address _token) external {
+  function rebalance() external {
+    // TEMPORARY, FOR TESTING
+    tokens = registry.getTokens();
+    quantities = registry.getAllQuantities();
+
+
+
+
+
     //getRebalanceDeltas();
     //// set up auctions
     //uint256 targetAmount = getTargetAmount(_token);
@@ -257,19 +265,23 @@ contract RebalancingBsktToken is
 
   function bid(address[] _tokens, int256[] _quantities) external {
     Bid memory _bestBid = bestBid;
-    if (
-      _bestBid.bidder == address(0) ||  // No bid yet
-      compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)
-    ) {
-      if (_bestBid.bidder != address(0)) {
-        escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities);
-      }
+    if (_bestBid.bidder == address(0)) {
       bestBid = Bid({
         bidder: msg.sender,
         tokens: _tokens,
         quantities: _quantities
       });
       escrow.escrowBid(_tokens, msg.sender, _quantities);
+    } else {
+      if (compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)) {
+        escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities);
+        bestBid = Bid({
+          bidder: msg.sender,
+          tokens: _tokens,
+          quantities: _quantities
+        });
+        escrow.escrowBid(_tokens, msg.sender, _quantities);
+      }
     }
   }
 
@@ -301,7 +313,7 @@ contract RebalancingBsktToken is
     return (targetTokens, deltas);
   }
 
-  function creationUnit() view public returns (address[] memory, uint256[] memory) {
+  function creationUnit() public view returns (address[] memory, uint256[] memory) {
     uint256 numTokens = tokens.length;
     address[] memory _tokens = new address[](numTokens);
     uint256[] memory _quantities = new uint256[](numTokens);
@@ -339,7 +351,7 @@ contract RebalancingBsktToken is
   }
 
   // TODO: Make stored and only update on rebalance. Should be cheaper on gas
-  function creationSize() view public returns (uint256) {
+  function creationSize() public view returns (uint256) {
     uint256 optimal = quantities.map(logFloor).reduce(min);
     return pow(10, Math.max(uint256(decimals).sub(optimal), 1));
   }

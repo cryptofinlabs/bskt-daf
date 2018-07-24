@@ -28,6 +28,7 @@ contract('RebalancingBsktToken', function(accounts) {
     let escrow;
     let owner = accounts[0];
     let dataManager = accounts[1];
+    let user1 = accounts[2];
 
     beforeEach(async function () {
       feeToken = await ERC20Token.new({from: owner});
@@ -46,6 +47,25 @@ contract('RebalancingBsktToken', function(accounts) {
         'RBT',
         {from: owner}
       );
+      escrow = await rebalancingBsktToken.escrow.call();
+
+      await tokenA.mint(user1, 100*10**18, { from: owner });
+      await tokenB.mint(user1, 100*10**18, { from: owner });
+      await tokenC.mint(user1, 100*10**18, { from: owner });
+      await tokenD.mint(user1, 100*10**18, { from: owner });
+      await tokenE.mint(user1, 100*10**18, { from: owner });
+
+      await tokenA.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenB.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenC.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenD.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenE.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+
+      await tokenA.approve(escrow, 100*10**18, { from: user1 });
+      await tokenB.approve(escrow, 100*10**18, { from: user1 });
+      await tokenC.approve(escrow, 100*10**18, { from: user1 });
+      await tokenD.approve(escrow, 100*10**18, { from: user1 });
+      await tokenE.approve(escrow, 100*10**18, { from: user1 });
     });
 
     it('should get rebalance deltas', async function() {
@@ -62,14 +82,42 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
 
-    it('should bid', async function() {
+    it.only('should bid', async function() {
+      await bsktRegistry.set(0, tokenA.address, 100, { from: dataManager });
+      await bsktRegistry.set(1, tokenB.address, 100, { from: dataManager });
+
+      await rebalancingBsktToken.rebalance();
+      let creationSize = await rebalancingBsktToken.creationSize.call();
+      await rebalancingBsktToken.issue(creationSize, { from: user1 });
+
+      await bsktRegistry.set(0, tokenA.address, 50, { from: dataManager });
+      await bsktRegistry.set(1, tokenC.address, 150, { from: dataManager });
+
+      const tokens = [tokenA.address, tokenB.address, tokenC.address];
+      const quantities = [-50, -100, 150];
+      await rebalancingBsktToken.bid(tokens, quantities, { from: user1 });
+
+      // Check escrow has correct amount
+      let escrowBalanceA = await tokenA.balanceOf.call(escrow);
+      let escrowBalanceB = await tokenB.balanceOf.call(escrow);
+      let escrowBalanceC = await tokenC.balanceOf.call(escrow);
+      assert.equal(escrowBalanceA, 0, 'escrow balance tokenA should be 0');
+      assert.equal(escrowBalanceB, 0, 'escrow balance tokenB should be 0');
+      assert.equal(escrowBalanceC, 150, 'escrow balance tokenC should be 150');
+
+      // Check user1 has correct amount
+      let user1BalanceA = await tokenA.balanceOf.call(user1);
+      let user1BalanceB = await tokenB.balanceOf.call(user1);
+      let user1BalanceC = await tokenC.balanceOf.call(user1);
+      assert.equal(user1BalanceA, 100*10**18, 'user1 balance tokenA should be unchanged');
+      assert.equal(user1BalanceB, 100*10**18, 'user1 balance tokenB should be unchanged');
+      assert.equal(user1BalanceC, 100*10**18 - 150, 'user1 balance tokenB should be 150 less');
     });
 
     it('should compare bids correctly', async function() {
       await setupRegistryStateA(dataManager, bsktRegistry, tokenA, tokenB, tokenC, tokenD, tokenE)
       await setupRegistryStateB(dataManager, bsktRegistry, tokenA, tokenB, tokenC, tokenD, tokenE)
     });
-
 
   });
 
@@ -99,6 +147,7 @@ contract('RebalancingBsktToken', function(accounts) {
         'RBT',
         {from: owner}
       );
+      escrow = await rebalancingBsktToken.escrow.call();
 
       await tokenA.mint(user1, 100*10**18, { from: owner });
       await tokenB.mint(user1, 100*10**18, { from: owner });
@@ -147,6 +196,9 @@ contract('RebalancingBsktToken', function(accounts) {
       console.log('delta', deltas[2].toNumber());
       console.log('delta', deltas[3].toNumber());
       console.log('delta', deltas[4].toNumber());
+    });
+
+    it('should bid', async function() {
     });
 
   });

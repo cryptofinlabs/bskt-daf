@@ -6,3 +6,6 @@
 
     npm install
     npm run test
+
+## Notes
+- Since Escrow ("proxy") requires approval anyway, maybe approval for issue/redeem should be there too.
