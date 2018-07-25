@@ -15,7 +15,7 @@ import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol";
 import "./BsktRegistry.sol";
 import "./Escrow.sol";
 import "./IBsktToken.sol";
-import "./Math.sol";
+//import "./Math.sol";
 
 
 contract RebalancingBsktToken is
@@ -109,7 +109,7 @@ contract RebalancingBsktToken is
     emit EscrowDeployed();
 
     ERC20 feeToken = registry.feeToken();
-    feeToken.approve(registry, Math.MAX_UINT256());
+    feeToken.approve(registry, MAX_UINT256());
   }
 
   // === EXTERNAL FUNCTIONS ===
@@ -326,36 +326,10 @@ contract RebalancingBsktToken is
 
   }
 
-  // `map` doesn't work if these are in a library
-  function logFloor(uint256 n) public pure returns (uint256) {
-    uint256 _n = n;
-    uint256 i = 0;
-    while(true) {
-      if (_n < 10) {
-        break;
-      }
-      _n /= 10;
-      i += 1;
-    }
-    return i;
-  }
-
-  function min(uint256 a, uint256 b) public pure returns (uint256) {
-    return a < b ? a : b;
-  }
-
-  function pow(uint256 a, uint256 b) public pure returns (uint256) {
-    uint256 product = 1;
-    for (uint256 i = 0; i < b; i++) {
-      product = product.mul(a);
-    }
-    return product;
-  }
-
   // TODO: Make stored and only update on rebalance. Should be cheaper on gas
   function creationSize() public view returns (uint256) {
     uint256 optimal = quantities.map(logFloor).reduce(min);
-    return pow(10, Math.max(uint256(decimals).sub(optimal), 1));
+    return pow(10, max(uint256(decimals).sub(optimal), 1));
   }
 
   // @dev Mints new tokens
@@ -378,6 +352,43 @@ contract RebalancingBsktToken is
       balances[from] = balances[from].sub(amount);
       emit Transfer(from, address(0), amount);
       return true;
+  }
+
+  // === MATH ===
+
+  // pure was removed to work with solidity-coverage
+
+  // `map` doesn't work if these are in a library
+  function logFloor(uint256 n) public returns (uint256) {
+    uint256 _n = n;
+    uint256 i = 0;
+    while(true) {
+      if (_n < 10) {
+        break;
+      }
+      _n /= 10;
+      i += 1; }
+    return i;
+  }
+
+  function max(uint256 a, uint256 b) public returns (uint256) {
+    return a >= b ? a : b;
+  }
+
+  function min(uint256 a, uint256 b) public returns (uint256) {
+    return a < b ? a : b;
+  }
+
+  function pow(uint256 a, uint256 b) public returns (uint256) {
+    uint256 product = 1;
+    for (uint256 i = 0; i < b; i++) {
+      product = product.mul(a);
+    }
+    return product;
+  }
+
+  function MAX_UINT256() internal returns (uint256) {
+    return 2 ** 256 - 1;
   }
 
 }

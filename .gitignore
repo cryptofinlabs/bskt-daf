@@ -1,2 +1,5 @@
-coverage/
+/*solidity-coverage*/
 coverage.json
+coverage/
+coverateEnv
+scTopics
