@@ -1,5 +1,5 @@
 pragma solidity 0.4.24;
-pragma experimental ABIEncoderV2;
+//pragma experimental ABIEncoderV2;
 
 
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
@@ -8,10 +8,10 @@ import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
-import "./IBsktDataRegistry.sol";
+import "./IBsktRegistry.sol";
 
 
-contract BsktRegistry is /* IBsktDataRegistry, */ Ownable {
+contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   using AddressArrayUtils for address[];
   using SafeMath for uint256;
@@ -35,7 +35,7 @@ contract BsktRegistry is /* IBsktDataRegistry, */ Ownable {
   // TODO: pull out into library contract
   modifier chargeFee() {
     if (readFeeAmount > 0) {
-      require(feeToken.transfer(beneficiary, readFeeAmount));
+      require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
     }
     _;
   }
@@ -71,20 +71,20 @@ contract BsktRegistry is /* IBsktDataRegistry, */ Ownable {
     quantities.sRemoveIndex(index);
   }
 
-  function get(address token) public view returns(uint256) {
+  function get(address token) public returns (uint256) {
     // token interact
-    require(feeToken.transfer(beneficiary, readFeeAmount));
+    //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
     (uint256 index,) = tokens.indexOf(token);
     return index;
   }
 
-  function getTokens() public view returns(address[] memory) {
+  function getTokens() public view returns (address[] memory) {
     return tokens;
   }
 
   // Careful, O(n^2)
-  function getQuantities(address[] memory _tokens) public view returns(uint256[] memory) {
-    require(feeToken.transfer(beneficiary, readFeeAmount));
+  function getQuantities(address[] memory _tokens) public returns (uint256[] memory) {
+    //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
     uint256 length = _tokens.length;
     uint256[] memory _quantities = new uint256[](length);
     for (uint256 i = 0; i < length; i++) {
@@ -99,8 +99,8 @@ contract BsktRegistry is /* IBsktDataRegistry, */ Ownable {
     return _quantities;
   }
 
-  function getAllQuantities() public view returns(uint256[] memory) {
-    require(feeToken.transfer(beneficiary, readFeeAmount));
+  function getAllQuantities() public returns (uint256[] memory) {
+    //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
     emit Read(msg.sender, readFeeAmount);
     return quantities;
   }

@@ -1,16 +1,21 @@
 pragma solidity 0.4.24;
+pragma experimental "v0.5.0";
+//pragma experimental ABIEncoderV2;
 
 
-import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
+import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
+import "cryptofin-solidity/contracts/rationals/Rational.sol";
+import "cryptofin-solidity/contracts/rationals/RationalMath.sol";
 import "openzeppelin-solidity/contracts/lifecycle/Pausable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/DetailedERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol"; 
 
-import "./IBsktToken.sol";
 import "./BsktRegistry.sol";
+import "./Escrow.sol";
+import "./IBsktToken.sol";
 import "./Math.sol";
 
 
@@ -21,14 +26,26 @@ contract RebalancingBsktToken is
 {
 
   using AddressArrayUtils for address[];
+  using RationalMath for Rational.Rational256;
   using SafeMath for uint256;
   using UIntArrayUtils for uint256[];
 
+  struct Bid {
+    address bidder;
+    address[] tokens;
+    int256[] quantities;
+  }
+
   address[] public tokens;
-  uint256[] public quantities;
+  uint256[] public quantities;  // is this needed? Could read balances from token contracts directly, though a potential risk
   BsktRegistry public registry;
+  Escrow public escrow;
+  uint256 public rebalancingPeriodOffset;
   uint256 public rebalancingInterval;
   uint256 public rebalancingDuration;
+
+  // Maybe just decompose
+  Bid public bestBid;
 
   // === EVENTS ===
 
@@ -36,6 +53,13 @@ contract RebalancingBsktToken is
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event RebalanceStart(address caller);
   event RebalanceEnd();
+
+  event EscrowDeployed();
+  event OK();
+  event LogAddresses(address[] a);
+  event LogQuantities(uint256[] a);
+  event LogInt256s(int256[] a);
+  event LogUInt256(uint256 n);
 
   // === MODIFIERS ===
 
@@ -45,6 +69,22 @@ contract RebalancingBsktToken is
     // TODO: inefficient since creationSize is used later in the functions that use this modifier
     uint256 _creationSize = creationSize();
     require((value % _creationSize) == 0);
+    _;
+  }
+
+  modifier requireSortedRational256(Rational.Rational256[] memory A) {
+    for (uint256 i = 1; i < A.length; i++) {
+      require(A[i - 1].lte(A[i]));
+    }
+    _;
+  }
+
+  modifier rebalancingPeriod() {
+    // TODO: use rebalancingPeriodOffset
+    uint256 startInterval = now.div(rebalancingInterval).mul(rebalancingInterval);
+    uint256 endInterval = startInterval.add(rebalancingDuration);
+    require(startInterval <= now);
+    require(now <= endInterval);
     _;
   }
 
@@ -60,11 +100,14 @@ contract RebalancingBsktToken is
   ) DetailedERC20(_name, _symbol, 18)
     public
   {
-    require(_tokens.length > 0);
+    //require(_tokens.length > 0);  // Will need this to prevent attack - can mint infinite tokens
     require(_tokens.length == _quantities.length);
     tokens = _tokens;
     quantities = _quantities;
     registry = BsktRegistry(_registry);
+
+    escrow = new Escrow(address(this));
+    emit EscrowDeployed();
   }
 
   // === EXTERNAL FUNCTIONS ===
@@ -116,7 +159,15 @@ contract RebalancingBsktToken is
     emit Redeem(msg.sender, amount, tokensToSkip);
   }
 
-  function rebalance(address _token) external {
+  function rebalance() external {
+    // TEMPORARY, FOR TESTING
+    tokens = registry.getTokens();
+    quantities = registry.getAllQuantities();
+
+
+
+
+
     //getRebalanceDeltas();
     //// set up auctions
     //uint256 targetAmount = getTargetAmount(_token);
@@ -132,28 +183,137 @@ contract RebalancingBsktToken is
      //}
   }
 
+  // Assumes tokens and quantities are sorted
+  // Returns true if A is better, false if B is better
+  // If equal, favors A
+  function compareBids(
+    address[] memory tokensA,
+    int256[] memory quantitiesA,
+    address[] memory tokensB,
+    int256[] memory quantitiesB
+  )
+    public
+    //view
+    returns (bool)
+  {
+    require(tokensA.length == quantitiesA.length);
+    require(tokensA.length == tokensB.length);
+    require(tokensA.length == quantitiesB.length);
+    (address[] memory deltaTokens, int256[] memory deltaQuantities) = getRebalanceDeltas();
+    Rational.Rational256[] memory fillProportionA = new Rational.Rational256[](deltaTokens.length);
+    Rational.Rational256[] memory fillProportionB = new Rational.Rational256[](deltaTokens.length);
+    for (uint256 i = 0; i < deltaTokens.length; i++) {
+      if (deltaQuantities[i] > 0) {
+        require(quantitiesA[i] >= 0);
+        require(quantitiesB[i] >= 0);
+        fillProportionA[i] = Rational.Rational256({ n: uint256(quantitiesA[i]), d: uint256(deltaQuantities[i]) });
+        fillProportionB[i] = Rational.Rational256({ n: uint256(quantitiesB[i]), d: uint256(deltaQuantities[i]) });
+       } else {
+         // If tokens are being sold (negative delta), it's not relevant to comparison
+         // Entry will be 0
+         // It's assumed bidders act in their own economic interest, so they
+         // wouldn't leave any tokens on the table
+         continue;
+       }
+    }
+    return true;
+    //return compareSortedRational256s(fillProportionA, fillProportionB);
+  }
+
+  //function getBidFillProportion(
+    //address[] bidTokens,
+    //int256[] bidQuantities,
+    //address[] deltaTokens,
+    //int256[] deltaQuantities
+  //)
+    //external
+    //pure
+    //returns (Rational.Rational256[] memory)
+  //{
+    //Rational.Rational256[] memory fillProportion = new Rational.Rational256[](deltaTokens.length);
+    //for (uint256 i = 0; i < deltaTokens.length; i++) {
+      //// TODO: consider negative deltas!
+      //if (deltaQuantities[i] > 0) {
+        //require(bidQuantities[i] >= 0);
+        //fillProportion[i] = Rational.Rational256({ n: uint256(bidQuantities[i]), d: uint256(deltaQuantities[i]) });
+       //} else {
+         //continue;  // Entry will be 0
+       //}
+    //}
+  //}
+
+  //// Assumes fillProportions are sorted
+  //// Returns true if A is better, false if B is better
+  //// If equal, favors B
+  //function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
+    //public
+    //requireSortedRational256(A)
+    //requireSortedRational256(B)
+    //returns (bool)
+  //{
+    //for (uint256 i = 0; i < A.length; i++) {
+      //if (A[i].gt(B[i])) {
+        //return true;
+      //} else if (A[i].lt(B[i])) {
+        //return false;
+      //} else {
+        //continue;
+      //}
+    //}
+    //return false;
+  //}
+
+  function bid(address[] _tokens, int256[] _quantities) external {
+    Bid memory _bestBid = bestBid;
+    if (_bestBid.bidder == address(0)) {
+      bestBid = Bid({
+        bidder: msg.sender,
+        tokens: _tokens,
+        quantities: _quantities
+      });
+      escrow.escrowBid(_tokens, msg.sender, _quantities);
+    } else {
+      if (compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)) {
+        escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities);
+        bestBid = Bid({
+          bidder: msg.sender,
+          tokens: _tokens,
+          quantities: _quantities
+        });
+        escrow.escrowBid(_tokens, msg.sender, _quantities);
+      }
+    }
+  }
+
   // naming of target vs all vs registry?
   // TODO: handle invalid data
   // deltas required. + means this contract needs to buy, - means sell
-  function getRebalanceDeltas() external view returns(address[] memory, int256[] memory) {
+  function getRebalanceDeltas()
+    public
+    //view
+    returns (address[] memory, int256[] memory)
+  {
     address[] memory registryTokens = registry.getTokens();
     address[] memory targetTokens = registryTokens.union(tokens);
+    emit LogAddresses(targetTokens);
     uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
-
+    emit LogQuantities(targetQuantities);
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
     for (uint256 i = 0; i < length; i++) {
       ERC20 erc20 = ERC20(targetTokens[i]);
+      // assert that balance is >= quantity recorded for that token
       uint256 balance = erc20.balanceOf(address(this));
-      // Ensure no overflow
-      require(balance == uint256(int256(balance)));  // should this be an assert?
+      emit LogUInt256(balance);
+      // TODO: ensure no overflow
       // TODO: add safemath
       deltas[i] = int256(targetQuantities[i]) - (int256(balance));
     }
+    emit LogInt256s(deltas);
     return (targetTokens, deltas);
   }
 
-  function creationUnit() view public returns(address[], uint256[]) {
+  function creationUnit() public view returns (address[] memory, uint256[] memory) {
     uint256 numTokens = tokens.length;
     address[] memory _tokens = new address[](numTokens);
     uint256[] memory _quantities = new uint256[](numTokens);
@@ -165,7 +325,7 @@ contract RebalancingBsktToken is
   }
 
   // `map` doesn't work if these are in a library
-  function logFloor(uint256 n) public pure returns(uint256) {
+  function logFloor(uint256 n) public pure returns (uint256) {
     uint256 _n = n;
     uint256 i = 0;
     while(true) {
@@ -178,18 +338,22 @@ contract RebalancingBsktToken is
     return i;
   }
 
-  function min(uint256 a, uint256 b) public pure returns(uint256) {
-    if (a < b) {
-      return a;
-    } else {
-      return b;
+  function min(uint256 a, uint256 b) public pure returns (uint256) {
+    return a < b ? a : b;
+  }
+
+  function pow(uint256 a, uint256 b) public pure returns (uint256) {
+    uint256 product = 1;
+    for (uint256 i = 0; i < b; i++) {
+      product = product.mul(a);
     }
+    return product;
   }
 
   // TODO: Make stored and only update on rebalance. Should be cheaper on gas
-  function creationSize() view public returns(uint256) {
+  function creationSize() public view returns (uint256) {
     uint256 optimal = quantities.map(logFloor).reduce(min);
-    return Math.max(uint256(decimals).sub(optimal), 1);
+    return pow(10, Math.max(uint256(decimals).sub(optimal), 1));
   }
 
   // @dev Mints new tokens
