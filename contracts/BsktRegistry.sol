@@ -1,4 +1,5 @@
 pragma solidity 0.4.24;
+pragma experimental "v0.5.0";
 //pragma experimental ABIEncoderV2;
 
 
@@ -25,6 +26,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   uint256[] internal quantities;
 
   // === EVENTS ===
+
   event Read(address from, uint256 feeAmount);
 
   modifier checkInvariants() {
@@ -42,14 +44,16 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   // should feeToken be variable?
   function setReadFee(address _token, uint256 _amount) external onlyOwner {
-    feeToken = ERC20(_token);
+    //feeToken = ERC20(_token);  // Ignore since for now fund sets in constructor
+    // In future could add a callback to fund to get updated
     readFeeAmount = _amount;
   }
 
 
-  constructor(address _beneficiary, address _feeToken) public {
+  constructor(address _beneficiary, address _feeToken, uint256 _amount) public {
     beneficiary = _beneficiary;
     feeToken = ERC20(_feeToken);
+    readFeeAmount = _amount;
   }
 
   function set(uint256 index, address token, uint256 quantity) public onlyOwner checkInvariants {
@@ -73,7 +77,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   function get(address token) public returns (uint256) {
     // token interact
-    //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
+    require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount), "fee could not be collected");
     (uint256 index,) = tokens.indexOf(token);
     return index;
   }
@@ -84,7 +88,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   // Careful, O(n^2)
   function getQuantities(address[] memory _tokens) public returns (uint256[] memory) {
-    //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
+    require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount), "fee could not be collected");
     uint256 length = _tokens.length;
     uint256[] memory _quantities = new uint256[](length);
     for (uint256 i = 0; i < length; i++) {
@@ -100,7 +104,8 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   }
 
   function getAllQuantities() public returns (uint256[] memory) {
-    //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
+    // token interact, require this
+    require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
     emit Read(msg.sender, readFeeAmount);
     return quantities;
   }

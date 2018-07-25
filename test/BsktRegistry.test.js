@@ -21,19 +21,22 @@ contract('BsktRegistry', function(accounts) {
     }
   }
 
-  context('with fresh registry', function() {
+  context('with fresh registry and zero fees', function() {
     let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
+    let feeAmount;
     let bsktRegistry;
-    let dataManager = accounts[1];
+    const owner = accounts[0];
+    const dataManager = accounts[1];
 
     beforeEach(async function () {
-      feeToken = await ERC20Token.new({ from: accounts[0] });
-      tokenA = await ERC20Token.new({ from: accounts[0] });
-      tokenB = await ERC20Token.new({ from: accounts[0] });
-      tokenC = await ERC20Token.new({ from: accounts[0] });
-      tokenD = await ERC20Token.new({ from: accounts[0] });
-      tokenE = await ERC20Token.new({ from: accounts[0] });
-      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, { from: dataManager });
+      feeAmount = 0;
+      feeToken = await ERC20Token.new({ from: owner });
+      tokenA = await ERC20Token.new({ from: owner });
+      tokenB = await ERC20Token.new({ from: owner });
+      tokenC = await ERC20Token.new({ from: owner });
+      tokenD = await ERC20Token.new({ from: owner });
+      tokenE = await ERC20Token.new({ from: owner });
+      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, feeAmount, { from: dataManager });
     });
 
     it('should set first entry', async function() {
@@ -56,19 +59,23 @@ contract('BsktRegistry', function(accounts) {
 
   });
 
-  context('with populated registry', function() {
+  context('with populated registry and zero fees', function() {
     let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
+    let feeAmount;
     let bsktRegistry;
+    let owner = accounts[0];
     let dataManager = accounts[1];
+    let user1 = accounts[2];
 
     beforeEach(async function () {
-      feeToken = await ERC20Token.new({ from: accounts[0] });
-      tokenA = await ERC20Token.new({ from: accounts[0] });
-      tokenB = await ERC20Token.new({ from: accounts[0] });
-      tokenC = await ERC20Token.new({ from: accounts[0] });
-      tokenD = await ERC20Token.new({ from: accounts[0] });
-      tokenE = await ERC20Token.new({ from: accounts[0] });
-      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, { from: dataManager });
+      feeAmount = 0;
+      feeToken = await ERC20Token.new({ from: owner });
+      tokenA = await ERC20Token.new({ from: owner });
+      tokenB = await ERC20Token.new({ from: owner });
+      tokenC = await ERC20Token.new({ from: owner });
+      tokenD = await ERC20Token.new({ from: owner });
+      tokenE = await ERC20Token.new({ from: owner });
+      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, feeAmount, { from: dataManager });
 
       await bsktRegistry.set(0, tokenA.address, 10, { from: dataManager });
       await bsktRegistry.set(1, tokenB.address, 11091, { from: dataManager });
@@ -106,8 +113,6 @@ contract('BsktRegistry', function(accounts) {
     it('should remove all entries', async function() {
     });
 
-    it('should charge fee for reading quantities', async function() {
-    });
 
     it('should get quantities', async function() {
       const quantities = await bsktRegistry.getQuantities.call([tokenD.address, tokenC.address, tokenB.address, tokenA.address]);
@@ -129,6 +134,56 @@ contract('BsktRegistry', function(accounts) {
       assert.isTrue(quantities[0].eq(new BigNumber(7962)));
       assert.isTrue(quantities[1].eq(new BigNumber(11091)));
       assert.isTrue(quantities[2].eq(new BigNumber(0)));
+    });
+
+  });
+
+  context('with fresh registry and fees', function() {
+    let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
+    let feeAmount;
+    let bsktRegistry;
+    const owner = accounts[0];
+    const dataManager = accounts[1];
+    const user1 = accounts[2];
+
+    beforeEach(async function () {
+      feeAmount = 10**17;
+      feeToken = await ERC20Token.new({ from: owner });
+      tokenA = await ERC20Token.new({ from: owner });
+      tokenB = await ERC20Token.new({ from: owner });
+      tokenC = await ERC20Token.new({ from: owner });
+      tokenD = await ERC20Token.new({ from: owner });
+      tokenE = await ERC20Token.new({ from: owner });
+      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, feeAmount, { from: dataManager });
+
+      await feeToken.mint(user1, 100*10**18, { from: owner });
+      await feeToken.approve(bsktRegistry.address, 100*10**18, { from: user1 });
+    });
+
+    it('should charge fee for reading quantities', async function() {
+      await bsktRegistry.set(0, tokenA.address, 10, { from: dataManager });
+      const user1BalanceStartFeeToken = await feeToken.balanceOf.call(user1)
+      const tokens = await bsktRegistry.getTokens.call({ from: user1 });
+      await bsktRegistry.getQuantities(tokens, { from: user1 });
+      const user1BalanceEndFeeToken = await feeToken.balanceOf.call(user1)
+      const registryBalanceFeeToken = await feeToken.balanceOf.call(dataManager);
+
+      assert.isTrue(user1BalanceStartFeeToken.minus(user1BalanceEndFeeToken).eq(feeAmount));
+      assert.isTrue(registryBalanceFeeToken.eq(feeAmount));
+    });
+
+    it('should charge fee for reading all quantities', async function() {
+      const user1BalanceStartFeeToken = await feeToken.balanceOf.call(user1)
+      const tokens = await bsktRegistry.getTokens.call({ from: user1 });
+      await bsktRegistry.getAllQuantities({ from: user1 });
+      const user1BalanceEndFeeToken = await feeToken.balanceOf.call(user1)
+      const registryBalanceFeeToken = await feeToken.balanceOf.call(dataManager);
+
+      assert.isTrue(user1BalanceStartFeeToken.minus(user1BalanceEndFeeToken).eq(feeAmount));
+      assert.isTrue(registryBalanceFeeToken.eq(feeAmount));
+    });
+
+    it('should fail when insufficient fees', async function() {
     });
 
   });

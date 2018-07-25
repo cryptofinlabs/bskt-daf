@@ -9,3 +9,4 @@
 
 ## Notes
 - Since Escrow ("proxy") requires approval anyway, maybe approval for issue/redeem should be there too.
+- No fee for getTokens

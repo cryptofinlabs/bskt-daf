@@ -21,19 +21,21 @@ contract('RebalancingBsktToken', function(accounts) {
     await bsktRegistry.set(4, tokenE.address, 10, { from: dataManager });
   }
 
-  context('with fresh RebalancingBsktToken', function() {
+  context('with fresh RebalancingBsktToken and zero fees', function() {
     let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
+    let feeAmount;
     let rebalancingBsktToken;
     let bsktRegistry;
     let escrow;
-    let owner = accounts[0];
-    let dataManager = accounts[1];
-    let user1 = accounts[2];
+    const owner = accounts[0];
+    const dataManager = accounts[1];
+    const user1 = accounts[2];
 
     beforeEach(async function () {
+      feeAmount = 0;
       feeToken = await ERC20Token.new({from: owner});
       // TODO; mint and approve
-      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, {from: dataManager});
+      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, feeAmount, {from: dataManager});
       tokenA = await ERC20Token.new({ from: owner });
       tokenB = await ERC20Token.new({ from: owner });
       tokenC = await ERC20Token.new({ from: owner });
@@ -82,7 +84,7 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
 
-    it.only('should bid', async function() {
+    it('should bid', async function() {
       await bsktRegistry.set(0, tokenA.address, 100, { from: dataManager });
       await bsktRegistry.set(1, tokenB.address, 100, { from: dataManager });
 
@@ -121,18 +123,20 @@ contract('RebalancingBsktToken', function(accounts) {
 
   });
 
-  context('with initial allocation', function() {
+  context('with initial allocation and zero fees', function() {
     let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
+    let feeAmount;
     let rebalancingBsktToken;
     let bsktRegistry;
     let escrow;
-    let owner = accounts[0];
-    let dataManager = accounts[1];
-    let user1 = accounts[2];
+    const owner = accounts[0];
+    const dataManager = accounts[1];
+    const user1 = accounts[2];
 
     beforeEach(async function () {
+      feeAmount = 0;
       feeToken = await ERC20Token.new({from: owner});
-      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, {from: dataManager});
+      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, feeAmount, {from: dataManager});
       tokenA = await ERC20Token.new({ from: owner });
       tokenB = await ERC20Token.new({ from: owner });
       tokenC = await ERC20Token.new({ from: owner });
@@ -199,6 +203,58 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
     it('should bid', async function() {
+    });
+
+  });
+
+  context('with initial allocation and fees', function() {
+    let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
+    let feeAmount;
+    let rebalancingBsktToken;
+    let bsktRegistry;
+    let escrow;
+    let owner = accounts[0];
+    let dataManager = accounts[1];
+    let user1 = accounts[2];
+
+    beforeEach(async function () {
+      feeAmount = 10**17;
+      feeToken = await ERC20Token.new({from: owner});
+      bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, feeAmount, {from: dataManager});
+      tokenA = await ERC20Token.new({ from: owner });
+      tokenB = await ERC20Token.new({ from: owner });
+      tokenC = await ERC20Token.new({ from: owner });
+      tokenD = await ERC20Token.new({ from: owner });
+      tokenE = await ERC20Token.new({ from: owner });
+
+      rebalancingBsktToken = await RebalancingBsktToken.new(
+        [tokenA.address, tokenB.address, tokenC.address, tokenD.address],
+        [100, 5000, 31200, 123013],
+        bsktRegistry.address,
+        'RebalancingBsktToken',
+        'RBT',
+        {from: owner}
+      );
+      escrow = await rebalancingBsktToken.escrow.call();
+
+      await tokenA.mint(user1, 100*10**18, { from: owner });
+      await tokenB.mint(user1, 100*10**18, { from: owner });
+      await tokenC.mint(user1, 100*10**18, { from: owner });
+      await tokenD.mint(user1, 100*10**18, { from: owner });
+      await tokenE.mint(user1, 100*10**18, { from: owner });
+
+      await tokenA.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenB.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenC.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenD.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      await tokenE.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+
+      // await feeToken.mint(user1, 100*10**18, { from: owner });
+      // TODO add function to approve bsktRegistry from fund
+      // await feeToken.approve(bsktRegistry.address, 100*10**18, { from: rebalancingBsktToken });
+    });
+
+    it('should', async function() {
     });
 
   });

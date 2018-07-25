@@ -30,4 +30,8 @@ library Math {
     return a < b ? a : b;
   }
 
+  function MAX_UINT256() internal pure returns (uint256) {
+    return 2 ** 256 - 1;
+  }
+
 }

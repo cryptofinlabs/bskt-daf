@@ -1,5 +1,4 @@
 pragma solidity 0.4.24;
-pragma experimental "v0.5.0";
 //pragma experimental ABIEncoderV2;
 
 
@@ -108,6 +107,9 @@ contract RebalancingBsktToken is
 
     escrow = new Escrow(address(this));
     emit EscrowDeployed();
+
+    ERC20 feeToken = registry.feeToken();
+    feeToken.approve(registry, Math.MAX_UINT256());
   }
 
   // === EXTERNAL FUNCTIONS ===

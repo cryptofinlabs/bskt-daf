@@ -7,6 +7,7 @@ const RebalancingBsktToken = artifacts.require('RebalancingBsktToken');
 module.exports = function(deployer, network, accounts) {
   if (network == 'development') {
     let bsktRegistry, token;
+    let feeAmount = 10**17;
 
 
     deployer.then(function() {
@@ -17,7 +18,7 @@ module.exports = function(deployer, network, accounts) {
       return ERC20Token.new();
     }).then(function(_token) {
       token = _token;
-      return BsktRegistry.new(accounts[1], token.address);
+      return BsktRegistry.new(accounts[1], token.address, feeAmount);
     });
     //.then(function(_bsktRegistry) {
       //bsktRegistry = _bsktRegistry;
