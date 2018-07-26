@@ -91,7 +91,7 @@ contract('RebalancingBsktToken', function(accounts) {
 
   });
 
-  context('with simple initial allocation and zero fees', function() {
+  context.only('with simple initial allocation and zero fees', function() {
     let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
     let feeAmount;
     let rebalancingBsktToken;
@@ -189,6 +189,7 @@ contract('RebalancingBsktToken', function(accounts) {
 
       const updatedTokens = await rebalancingBsktToken.getTokens.call();
       const updatedQuantities = await rebalancingBsktToken.getQuantities.call();
+      //const [updatedTokens, updatedQuantities] = await rebalancingBsktToken.getCreationUnit.call();
       assert.equal(updatedTokens[0], tokenA.address);
       assert.equal(updatedTokens[1], tokenB.address);
       assert.equal(updatedTokens[2], tokenC.address);
@@ -209,10 +210,10 @@ contract('RebalancingBsktToken', function(accounts) {
       // todo check that bidder's resulting balance is ok
     });
 
-    it('should bid and rebalance correctly for mediocre bid', async function() {
+    it('should bid and rebalance correctly for mediocre bid and multiple units', async function() {
       // Starts at 100, 100
       let creationSize = await rebalancingBsktToken.creationSize.call();
-      await rebalancingBsktToken.issue(creationSize, { from: user1 });
+      await rebalancingBsktToken.issue(3*creationSize, { from: user1 });
 
       await bsktRegistry.set(0, tokenA.address, 50, { from: dataManager });
       await bsktRegistry.set(1, tokenC.address, 150, { from: dataManager });
@@ -237,9 +238,9 @@ contract('RebalancingBsktToken', function(accounts) {
       const tokenABalance = await tokenA.balanceOf.call(rebalancingBsktToken.address);
       const tokenBBalance = await tokenB.balanceOf.call(rebalancingBsktToken.address);
       const tokenCBalance = await tokenC.balanceOf.call(rebalancingBsktToken.address);
-      assert.equal(tokenABalance.toNumber(), 70, 'rebalancingBsktToken tokenA balance should be correct');
+      assert.equal(tokenABalance.toNumber(), 3*70, 'rebalancingBsktToken tokenA balance should be correct');
       assert.equal(tokenBBalance.toNumber(), 0, 'rebalancingBsktToken tokenB balance should be correct');
-      assert.equal(tokenCBalance.toNumber(), 75, 'rebalancingBsktToken tokenC balance should be correct');
+      assert.equal(tokenCBalance.toNumber(), 3*75, 'rebalancingBsktToken tokenC balance should be correct');
 
       // todo: add bidder account
       // todo check that bidder's resulting balance is ok
@@ -386,5 +387,99 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
   });
+
+  //context('with realistic mid-lifecycle', function() {
+    //let feeToken, tokenA, tokenB, tokenC, tokenD, tokenE;
+    //let feeAmount;
+    //let rebalancingBsktToken;
+    //let bsktRegistry;
+    //let escrow;
+    //let owner = accounts[0];
+    //let dataManager = accounts[1];
+    //let user1 = accounts[2];
+
+    //beforeEach(async function () {
+      //feeAmount = 10**17;
+      //feeToken = await ERC20Token.new({from: owner});
+      //bsktRegistry = await BsktRegistry.new(dataManager, feeToken.address, feeAmount, {from: dataManager});
+      //tokenA = await ERC20Token.new({ from: owner });
+      //tokenB = await ERC20Token.new({ from: owner });
+      //tokenC = await ERC20Token.new({ from: owner });
+      //tokenD = await ERC20Token.new({ from: owner });
+      //tokenE = await ERC20Token.new({ from: owner });
+
+      //rebalancingBsktToken = await RebalancingBsktToken.new(
+        //[tokenA.address, tokenB.address, tokenC.address, tokenD.address],
+        //[100, 5000, 31200, 123013],
+        //bsktRegistry.address,
+        //'RebalancingBsktToken',
+        //'RBT',
+        //{from: owner}
+      //);
+      //escrow = await rebalancingBsktToken.escrow.call();
+
+      //await tokenA.mint(user1, 100*10**18, { from: owner });
+      //await tokenB.mint(user1, 100*10**18, { from: owner });
+      //await tokenC.mint(user1, 100*10**18, { from: owner });
+      //await tokenD.mint(user1, 100*10**18, { from: owner });
+      //await tokenE.mint(user1, 100*10**18, { from: owner });
+
+      //await tokenA.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      //await tokenB.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      //await tokenC.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      //await tokenD.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+      //await tokenE.approve(rebalancingBsktToken.address, 100*10**18, { from: user1 });
+
+       //await feeToken.mint(user1, 100*10**18, { from: owner });
+      //// TODO add function to approve bsktRegistry from fund
+      //// await feeToken.approve(bsktRegistry.address, 100*10**18, { from: rebalancingBsktToken });
+
+      //let creationSize = await rebalancingBsktToken.creationSize.call();
+      //await rebalancingBsktToken.issue(15*creationSize, { from: user1 });
+
+      //await bsktRegistry.set(0, tokenA.address, 50, { from: dataManager });
+      //await bsktRegistry.set(1, tokenC.address, 150, { from: dataManager });
+
+      //const bidTokens = [tokenA.address, tokenB.address, tokenC.address];
+      //const bidQuantities = [-30, -100, 75];
+    //});
+
+    //it('should bid and rebalance correctly for mediocre bid', async function() {
+      //// Starts at 100, 100
+      //let creationSize = await rebalancingBsktToken.creationSize.call();
+      //await rebalancingBsktToken.issue(creationSize, { from: user1 });
+
+      //await bsktRegistry.set(0, tokenA.address, 50, { from: dataManager });
+      //await bsktRegistry.set(1, tokenC.address, 150, { from: dataManager });
+
+      //const bidTokens = [tokenA.address, tokenB.address, tokenC.address];
+      //const bidQuantities = [-30, -100, 75];
+      //await rebalancingBsktToken.bid(bidTokens, bidQuantities, { from: user1 });
+
+      //await rebalancingBsktToken.rebalance({ from: user1 });
+
+      //const updatedTokens = await rebalancingBsktToken.getTokens.call();
+      //const updatedQuantities = await rebalancingBsktToken.getQuantities.call();
+      //assert.equal(updatedTokens[0], tokenA.address);
+      //assert.equal(updatedTokens[1], tokenB.address);
+      //assert.equal(updatedTokens[2], tokenC.address);
+      //// TODO: helper to check arrays
+      //// helper to check arrays of BigNumber
+      //assert.equal(updatedQuantities[0].toNumber(), 70, 'rebalancingBsktToken quantities should be correct');
+      //assert.equal(updatedQuantities[1].toNumber(), 0, 'rebalancingBsktToken quantities should be correct');
+      //assert.equal(updatedQuantities[2].toNumber(), 75, 'rebalancingBsktToken quantities should be correct');
+
+      //const tokenABalance = await tokenA.balanceOf.call(rebalancingBsktToken.address);
+      //const tokenBBalance = await tokenB.balanceOf.call(rebalancingBsktToken.address);
+      //const tokenCBalance = await tokenC.balanceOf.call(rebalancingBsktToken.address);
+      //assert.equal(tokenABalance.toNumber(), 70, 'rebalancingBsktToken tokenA balance should be correct');
+      //assert.equal(tokenBBalance.toNumber(), 0, 'rebalancingBsktToken tokenB balance should be correct');
+      //assert.equal(tokenCBalance.toNumber(), 75, 'rebalancingBsktToken tokenC balance should be correct');
+
+      //// todo: add bidder account
+      //// todo check that bidder's resulting balance is ok
+    //});
+
+  //});
 
 });

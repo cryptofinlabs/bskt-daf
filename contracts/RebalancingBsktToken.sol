@@ -53,9 +53,10 @@ contract RebalancingBsktToken is
   event RebalanceStart(address caller);
   event RebalanceEnd();
   event Rebalance(address caller);
-  event BidAccepted(address bidder, address[] tokens, int256[] quantities);
-
+  event BidAccepted(address bidder, address[] tokens, int256[] quantities, uint256 totalUnits);  // tense is inconsistent
   event EscrowDeployed();
+
+  // tests
   event OK();
   event LogAddresses(address[] a);
   event LogQuantities(uint256[] a);
@@ -80,18 +81,18 @@ contract RebalancingBsktToken is
     _;
   }
 
-  modifier biddingPeriod() {
-    // TODO
+  modifier onlyBiddingPeriod() {
+    //uint256 startRebalancingInterval = now.div(rebalancingInterval).mul(rebalancingInterval).add(rebalancingOffset);
+    //uint256 startBiddingInterval = startRebalancingInterval.add(biddingOffset);
+    //uint256 endBiddingInterval = startBiddingInterval.add(biddingDuration);
+    //require(startBiddingInterval <= now);
+    //require(now <= endBiddingInterval);
     _;
   }
 
-  modifier rebalancingPeriod() {
+  modifier onlyRebalancingPeriod() {
     // TODO
     //// TODO: use rebalancingPeriodOffset
-    //uint256 startInterval = now.div(rebalancingInterval).mul(rebalancingInterval);
-    //uint256 endInterval = startInterval.add(rebalancingDuration);
-    //require(startInterval <= now);
-    //require(now <= endInterval);
     _;
   }
 
@@ -172,17 +173,19 @@ contract RebalancingBsktToken is
   // Transfers tokens from escrow to fund and fund to bidder
   function settleBid() internal {
     Bid memory _bestBid = bestBid;
-    escrow.releaseBid(_bestBid.tokens, address(this), _bestBid.quantities);
+    uint256 _totalUnits = totalUnits();
+    escrow.releaseBid(_bestBid.tokens, address(this), _bestBid.quantities, _totalUnits);
     for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
       if (_bestBid.quantities[i] < 0) {
         // quantity
-        uint256 amount = uint256(-_bestBid.quantities[i]);
+        uint256 amount = uint256(-_bestBid.quantities[i]).mul(_totalUnits);
         ERC20(_bestBid.tokens[i]).transfer(bestBid.bidder, amount);
       }
     }
   }
 
   // List of tokens in bestBid should be the union of tokens in registry and fund
+  // TODO needs to be modified for more than just one creationUnit
   // TODO need to prune tokens with balance 0
   function updateBalances() internal {
     Bid memory _bestBid = bestBid;
@@ -190,7 +193,7 @@ contract RebalancingBsktToken is
     for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
       ERC20 erc20 = ERC20(_bestBid.tokens[i]);
       // Must query balance to deal with airdrops
-      updatedQuantities[i] = erc20.balanceOf(address(this));
+      updatedQuantities[i] = erc20.balanceOf(address(this)).div(totalUnits());
     }
     tokens = _bestBid.tokens;
     quantities = updatedQuantities;
@@ -200,7 +203,7 @@ contract RebalancingBsktToken is
   // Anyone can call this
   function rebalance()
     external
-    rebalancingPeriod
+    onlyRebalancingPeriod
   {
     Bid memory _bestBid = bestBid;
     require(_bestBid.bidder != address(0));
@@ -294,7 +297,7 @@ contract RebalancingBsktToken is
 
   function bid(address[] _tokens, int256[] _quantities)
     external
-    biddingPeriod
+    onlyBiddingPeriod
   {
     Bid memory _bestBid = bestBid;
     if (_bestBid.bidder == address(0)) {
@@ -303,18 +306,19 @@ contract RebalancingBsktToken is
         tokens: _tokens,
         quantities: _quantities
       });
-      escrow.escrowBid(_tokens, msg.sender, _quantities);
-      emit BidAccepted(msg.sender, _tokens, _quantities);
+      uint256 _totalUnits = totalUnits();
+      escrow.escrowBid(_tokens, msg.sender, _quantities, _totalUnits);
+      emit BidAccepted(msg.sender, _tokens, _quantities, _totalUnits);
     } else {
       if (compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)) {
-        escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities);
+        escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities, _totalUnits);
         bestBid = Bid({
           bidder: msg.sender,
           tokens: _tokens,
           quantities: _quantities
         });
-        escrow.escrowBid(_tokens, msg.sender, _quantities);
-        emit BidAccepted(msg.sender, _tokens, _quantities);
+        escrow.escrowBid(_tokens, msg.sender, _quantities, _totalUnits);
+        emit BidAccepted(msg.sender, _tokens, _quantities, _totalUnits);
       } else {
         // Revert if bid isn't better than bestBid
         revert();
@@ -365,6 +369,14 @@ contract RebalancingBsktToken is
   function creationSize() public view returns (uint256) {
     uint256 optimal = quantities.map(logFloor).reduce(min);
     return pow(10, max(uint256(decimals).sub(optimal), 1));
+  }
+
+  function totalUnits()
+    public
+    view
+    returns (uint256)
+  {
+    return totalSupply_.div(creationSize());
   }
 
   // @dev Mints new tokens
