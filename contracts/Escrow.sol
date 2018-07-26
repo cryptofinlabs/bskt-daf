@@ -27,7 +27,7 @@ contract Escrow is OnlyCore {
   function releaseBid(address[] memory tokens, address to, int256[] memory quantities) public onlyCore {
     for (uint256 i = 0; i < tokens.length; i++) {
       if (quantities[i] > 0) {
-        ERC20(tokens[i]).transferFrom(address(this), to, uint256(quantities[i]));
+        ERC20(tokens[i]).transfer(to, uint256(quantities[i]));
       }
     }
   }

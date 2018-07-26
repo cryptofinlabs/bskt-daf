@@ -48,10 +48,12 @@ contract RebalancingBsktToken is
 
   // === EVENTS ===
 
-  event Create(address indexed creator, uint256 amount);
+  event Issue(address indexed creator, uint256 amount);
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event RebalanceStart(address caller);
   event RebalanceEnd();
+  event Rebalance(address caller);
+  event BidAccepted(address bidder, address[] tokens, int256[] quantities);
 
   event EscrowDeployed();
   event OK();
@@ -78,12 +80,18 @@ contract RebalancingBsktToken is
     _;
   }
 
+  modifier biddingPeriod() {
+    // TODO
+    _;
+  }
+
   modifier rebalancingPeriod() {
-    // TODO: use rebalancingPeriodOffset
-    uint256 startInterval = now.div(rebalancingInterval).mul(rebalancingInterval);
-    uint256 endInterval = startInterval.add(rebalancingDuration);
-    require(startInterval <= now);
-    require(now <= endInterval);
+    // TODO
+    //// TODO: use rebalancingPeriodOffset
+    //uint256 startInterval = now.div(rebalancingInterval).mul(rebalancingInterval);
+    //uint256 endInterval = startInterval.add(rebalancingDuration);
+    //require(startInterval <= now);
+    //require(now <= endInterval);
     _;
   }
 
@@ -131,7 +139,7 @@ contract RebalancingBsktToken is
     }
 
     mint(msg.sender, amount);
-    emit Create(msg.sender, amount);
+    emit Issue(msg.sender, amount);
   }
 
   function redeem(uint256 amount, address[] tokensToSkip)
@@ -161,33 +169,52 @@ contract RebalancingBsktToken is
     emit Redeem(msg.sender, amount, tokensToSkip);
   }
 
-  function rebalance() external {
-    // TEMPORARY, FOR TESTING
-    tokens = registry.getTokens();
-    quantities = registry.getAllQuantities();
+  // Transfers tokens from escrow to fund and fund to bidder
+  function settleBid() internal {
+    Bid memory _bestBid = bestBid;
+    escrow.releaseBid(_bestBid.tokens, address(this), _bestBid.quantities);
+    for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
+      if (_bestBid.quantities[i] < 0) {
+        // quantity
+        uint256 amount = uint256(-_bestBid.quantities[i]);
+        ERC20(_bestBid.tokens[i]).transfer(bestBid.bidder, amount);
+      }
+    }
+  }
 
+  // List of tokens in bestBid should be the union of tokens in registry and fund
+  // TODO need to prune tokens with balance 0
+  function updateBalances() internal {
+    Bid memory _bestBid = bestBid;
+    uint256[] memory updatedQuantities = new uint256[](_bestBid.tokens.length);
+    for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
+      ERC20 erc20 = ERC20(_bestBid.tokens[i]);
+      // Must query balance to deal with airdrops
+      updatedQuantities[i] = erc20.balanceOf(address(this));
+    }
+    tokens = _bestBid.tokens;
+    quantities = updatedQuantities;
+  }
 
-
-
-
-    //getRebalanceDeltas();
-    //// set up auctions
-    //uint256 targetAmount = getTargetAmount(_token);
-    //// do we account balances in BsktToken, or let each token implement it?
-    //// what if token's balanceOf is malicious?
-     //uint256 tokenBalance = ERC20(token).balanceOf(address(this));
-     //if (targetAmount > tokenBalance) {
-       //// dutch auction (ask, offer)
-     //} else if (targetAmount < tokenBalance) {
-       //// dutch auction (ask, offer)
-     //} else {
-       //return;
-     //}
+  // TODO: maybe add some options to not rebalance if bestBid is atrocious (< threshold%)
+  // Anyone can call this
+  function rebalance()
+    external
+    rebalancingPeriod
+  {
+    Bid memory _bestBid = bestBid;
+    require(_bestBid.bidder != address(0));
+    settleBid();
+    updateBalances();
+    // set some didRebalance flag
+    delete bestBid;
+    emit Rebalance(msg.sender);
   }
 
   // Assumes tokens and quantities are sorted
   // Returns true if A is better, false if B is better
   // If equal, favors A
+  // Should probably rename to something like "isBidBetter"
   function compareBids(
     address[] memory tokensA,
     int256[] memory quantitiesA,
@@ -265,7 +292,10 @@ contract RebalancingBsktToken is
     //return false;
   //}
 
-  function bid(address[] _tokens, int256[] _quantities) external {
+  function bid(address[] _tokens, int256[] _quantities)
+    external
+    biddingPeriod
+  {
     Bid memory _bestBid = bestBid;
     if (_bestBid.bidder == address(0)) {
       bestBid = Bid({
@@ -274,6 +304,7 @@ contract RebalancingBsktToken is
         quantities: _quantities
       });
       escrow.escrowBid(_tokens, msg.sender, _quantities);
+      emit BidAccepted(msg.sender, _tokens, _quantities);
     } else {
       if (compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)) {
         escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities);
@@ -283,6 +314,10 @@ contract RebalancingBsktToken is
           quantities: _quantities
         });
         escrow.escrowBid(_tokens, msg.sender, _quantities);
+        emit BidAccepted(msg.sender, _tokens, _quantities);
+      } else {
+        // Revert if bid isn't better than bestBid
+        revert();
       }
     }
   }
@@ -353,6 +388,22 @@ contract RebalancingBsktToken is
       emit Transfer(from, address(0), amount);
       return true;
   }
+
+  function getTokens()
+    external
+    returns (address[] memory)
+  {
+    return tokens;
+  }
+
+  function getQuantities()
+    external
+    returns (uint256[] memory)
+  {
+    return quantities;
+  }
+
+
 
   // === MATH ===
 
