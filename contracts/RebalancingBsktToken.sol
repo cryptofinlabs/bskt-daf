@@ -225,7 +225,6 @@ contract RebalancingBsktToken is
     int256[] memory quantitiesB
   )
     public
-    //view
     returns (bool)
   {
     require(tokensA.length == quantitiesA.length);
@@ -331,7 +330,6 @@ contract RebalancingBsktToken is
   // deltas required. + means this contract needs to buy, - means sell
   function getRebalanceDeltas()
     public
-    //view
     returns (address[] memory, int256[] memory)
   {
     address[] memory registryTokens = registry.getTokens();
