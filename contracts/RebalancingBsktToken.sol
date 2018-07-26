@@ -199,6 +199,18 @@ contract RebalancingBsktToken is
     quantities = updatedQuantities;
   }
 
+  //// handles AUM fee
+  //function payFees() internal {
+    //// rebalancingFeePct
+    //uint256 length = tokens.length;
+    //for (uint256 i = 0; i < length; i++) {
+      //uint256 amount = quantities[i] * rebalancingFeePct;  // use Rational
+      //ERC20(tokens[i]).transfer(registry.beneficiary(), amount);
+      //// update balances again
+      //quantities[i] = quantities[i].sub(amount);
+    //}
+  //}
+
   // TODO: maybe add some options to not rebalance if bestBid is atrocious (< threshold%)
   // Anyone can call this
   function rebalance()
@@ -225,7 +237,6 @@ contract RebalancingBsktToken is
     int256[] memory quantitiesB
   )
     public
-    //view
     returns (bool)
   {
     require(tokensA.length == quantitiesA.length);
@@ -331,7 +342,6 @@ contract RebalancingBsktToken is
   // deltas required. + means this contract needs to buy, - means sell
   function getRebalanceDeltas()
     public
-    //view
     returns (address[] memory, int256[] memory)
   {
     address[] memory registryTokens = registry.getTokens();
