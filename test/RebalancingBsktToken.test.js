@@ -4,6 +4,7 @@ const Escrow = artifacts.require('Escrow');
 const RebalancingBsktToken = artifacts.require('RebalancingBsktToken');
 
 const BigNumber = require('bignumber.js');
+const tempo = require('@digix/tempo');
 
 
 contract('RebalancingBsktToken', function(accounts) {
@@ -387,9 +388,7 @@ contract('RebalancingBsktToken', function(accounts) {
     it('should get rebalance deltas', async function() {
     });
 
-    it('should', async function() {
-      let creationSize = await rebalancingBsktToken.creationSize.call();
-      await rebalancingBsktToken.issue(10**18, { from: user1 });
+    it('should bid and rebalance correctly', async function() {
 
       await bsktRegistry.set(0, tokenA.address, 50, { from: dataManager });
       await bsktRegistry.set(1, tokenC.address, 150, { from: dataManager });

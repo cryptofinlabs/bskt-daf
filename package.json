@@ -24,6 +24,7 @@
   "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
   "dependencies": {},
   "devDependencies": {
+    "@digix/tempo": "^0.2.0",
     "bignumber.js": "^7.2.1",
     "cryptofin-solidity": "0.0.3",
     "ganache-cli": "^6.1.4",
