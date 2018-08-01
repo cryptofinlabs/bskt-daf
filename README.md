@@ -10,6 +10,10 @@
 - Since Escrow ("proxy") requires approval anyway, maybe approval for issue/redeem should be there too.
 - No fee for getTokens
 
+## Documentation
+### Auction
+When bidding, the calls must be carefully constructed to pass in tokens in the required order. It must match the order specified in `getRebalanceDeltas()`.
+
 ### Tests
 need to write assert.equal for bignumbers
 use new web3 for truffle
@@ -46,6 +50,8 @@ ERC20 + issue, redeem
 
 tense for event names
 
+what happens if you rebalance when no tokens have been issued?
+  It should fail because of div by 0 (totalUnits) when updating quantities
 
 ## Fees
 currently fund pays every time someone bids
@@ -54,3 +60,13 @@ maybe take a snapshot of the registry internally, costing money
 all bidding stuff has to happen after this
 
 gonna use a state machine to track everything
+
+
+add proxy so only one contract has to be approved
+
+## Bugs
+- If tokens are being sold, but are scattered throughout, it's impossible to get a sorted list
+  - May have to sort on chain?
+  - The current implementation has been modified to treat sales as 100% so it can still work with perfect bids
+    - commented out requireSorted, so it'll just compare left to right based on whatever order the union gives
+      - any overall better bid should still beat lesser bids

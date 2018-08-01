@@ -6,7 +6,6 @@ import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "cryptofin-solidity/contracts/rationals/Rational.sol";
 import "cryptofin-solidity/contracts/rationals/RationalMath.sol";
-import "openzeppelin-solidity/contracts/lifecycle/Pausable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/DetailedERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
@@ -20,7 +19,6 @@ import "./IBsktToken.sol";
 
 contract RebalancingBsktToken is
   DetailedERC20,
-  Pausable,
   StandardToken
 {
 
@@ -40,7 +38,7 @@ contract RebalancingBsktToken is
     OPT_OUT,  // After snapshotting the delta, give investors some time to opt-out if they don't agree with the rebalance. I want a better name though
     AUCTIONS_OPEN,  // Bids being accepted
     // Rebalance
-    OPEN,
+    OPEN
   }
 
   enum FN {
@@ -52,21 +50,23 @@ contract RebalancingBsktToken is
 
   address[] public tokens;
   uint256[] public quantities;  // is this needed? Could read balances from token contracts directly, though a potential risk
+  uint256 public creationSize;
 
   // Snapshot of the delta of tokens needed to rebalance
   // These are set by commitDelta
   address[] public deltaTokens;
-  uint256[] public deltaQuantities;
+  int256[] public deltaQuantities;
 
   BsktRegistry public registry;
   Escrow public escrow;
+  State public state;
 
   uint256 public xInterval;
   uint256 public xOffset;
   uint256 public auctionOffset;
   uint256 public auctionDuration;
   uint256 public optOutDuration;
-  uint256 public rebalancingDuration;
+  uint256 public rebalanceDuration;
 
 
   // Maybe just decompose
@@ -80,7 +80,6 @@ contract RebalancingBsktToken is
   event RebalanceEnd();
   event Rebalance(address caller);
   event BidAccepted(address bidder, address[] tokens, int256[] quantities, uint256 totalUnits);  // tense is inconsistent
-  event EscrowDeployed();
 
   // tests
   event OK();
@@ -106,6 +105,11 @@ contract RebalancingBsktToken is
 
   // intervals should always be [)
   modifier onlyDuringValidInterval(FN fn) {
+    checkValidInterval(fn);
+    _;
+  }
+
+  function checkValidInterval(FN fn) internal {
     uint256 xIntervalStart = now.div(xInterval).mul(xInterval).add(xOffset);
 
     uint256 optOutIntervalStart = xIntervalStart;
@@ -132,10 +136,9 @@ contract RebalancingBsktToken is
     } else if (fn == FN.REBALANCE) {
       // require(state == State.AUCTIONS_OPEN);  // What if no bids were made, so the state never transitioned from OPT_OUT to AUCTIONS_OPEN?
       require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd);
-    } else
+    } else {
       revert();
     }
-    _;
   }
 
   // === CONSTRUCTOR ===
@@ -145,7 +148,14 @@ contract RebalancingBsktToken is
     // read from registry here
     address[] _tokens,
     uint256[] _quantities,
+    uint256 _creationSize,
     address _registry,
+    uint256 _xInterval,
+    uint256 _xOffset,
+    uint256 _auctionOffset,
+    uint256 _auctionDuration,
+    uint256 _optOutDuration,
+    uint256 _rebalanceDuration,
     string _name,
     string _symbol
   ) DetailedERC20(_name, _symbol, 18)
@@ -156,25 +166,32 @@ contract RebalancingBsktToken is
     //require(auctionOffset.add(auctionDuration).add(rebalanceDuration) <= xInterval);
     tokens = _tokens;
     quantities = _quantities;
+    creationSize = _creationSize;
     registry = BsktRegistry(_registry);
 
     escrow = new Escrow(address(this));
-    emit EscrowDeployed();
+
+    xInterval = _xInterval;
+    xOffset = _xOffset;
+    auctionOffset = _auctionOffset;
+    auctionDuration = _auctionDuration;
+    optOutDuration = _optOutDuration;
+    rebalanceDuration = _rebalanceDuration;
 
     ERC20 feeToken = registry.feeToken();
     feeToken.approve(registry, MAX_UINT256());
+
   }
 
   // === EXTERNAL FUNCTIONS ===
 
   function issue(uint256 amount)
     external
-    onlyOpenPeriod()
-    whenNotPaused()
+    //onlyDuringValidInterval(FN.ISSUE)
   {
     require(amount > 0);
     require((totalSupply_ + amount) > totalSupply_);
-    uint256 _creationSize = creationSize();
+    uint256 _creationSize = creationSize;
     require((amount % _creationSize) == 0);
 
     uint256 tokensLength = tokens.length;
@@ -190,12 +207,11 @@ contract RebalancingBsktToken is
 
   function redeem(uint256 amount, address[] tokensToSkip)
     external
-    onlyOpenPeriod()
   {
     require(amount > 0);
     require(amount <= totalSupply_);
     require(amount <= balances[msg.sender]);
-    uint256 _creationSize = creationSize();
+    uint256 _creationSize = creationSize;
     require((amount % _creationSize) == 0);
     uint256 tokensLength = tokens.length;
     require(tokensToSkip.length <= tokensLength);
@@ -239,7 +255,11 @@ contract RebalancingBsktToken is
     for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
       ERC20 erc20 = ERC20(_bestBid.tokens[i]);
       // Must query balance to deal with airdrops
-      updatedQuantities[i] = erc20.balanceOf(address(this)).div(totalUnits());
+      updatedQuantities[i] = erc20.balanceOf(address(this));
+    }
+    uint256 _totalUnits = totalUnits();
+    for (i = 0; i < _bestBid.tokens.length; i++) {
+      updatedQuantities[i] = updatedQuantities[i].div(_totalUnits);
     }
     tokens = _bestBid.tokens;
     quantities = updatedQuantities;
@@ -261,7 +281,6 @@ contract RebalancingBsktToken is
   // Anyone can call this
   function rebalance()
     external
-    onlyDuringValidInterval(FN.REBALANCE)
   {
     Bid memory _bestBid = bestBid;
     require(_bestBid.bidder != address(0));
@@ -282,8 +301,8 @@ contract RebalancingBsktToken is
     address[] memory tokensB,
     int256[] memory quantitiesB
   )
-    public
-    returns (bool)
+  public
+  returns (bool)
   {
     require(tokensA.length == quantitiesA.length);
     require(tokensA.length == tokensB.length);
@@ -297,13 +316,14 @@ contract RebalancingBsktToken is
         require(quantitiesB[i] >= 0);
         fillProportionA[i] = Rational.Rational256({ n: uint256(quantitiesA[i]), d: uint256(_deltaQuantities[i]) });
         fillProportionB[i] = Rational.Rational256({ n: uint256(quantitiesB[i]), d: uint256(_deltaQuantities[i]) });
-       } else {
-         // If tokens are being sold (negative delta), it's not relevant to comparison
-         // Entry will be 0
-         // It's assumed bidders act in their own economic interest, so they
-         // wouldn't leave any tokens on the table
-         continue;
-       }
+      } else {
+        // If tokens are being sold (negative delta), entry is 100
+        // It's assumed bidders act in their own economic interest, so they
+        // wouldn't leave any tokens on the table
+        fillProportionA[i] = Rational.Rational256({ n: 100, d: 1 });
+        fillProportionB[i] = Rational.Rational256({ n: 100, d: 1 });
+        continue;
+      }
     }
     return compareSortedRational256s(fillProportionA, fillProportionB);
   }
@@ -335,8 +355,8 @@ contract RebalancingBsktToken is
   // If equal, favors B
   function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
     internal
-    requireSortedRational256(A)
-    requireSortedRational256(B)
+    //requireSortedRational256(A)
+    //requireSortedRational256(B)
     returns (bool)
   {
     for (uint256 i = 0; i < A.length; i++) {
@@ -351,12 +371,29 @@ contract RebalancingBsktToken is
     return false;
   }
 
+
+  // Checks that the bid isn't trying to take more funds than it should
+  function acceptableBid(address[] _tokens, int256[] _quantities) internal view returns (bool) {
+    // todo; use the stored ones instead
+    (address[] memory _deltaTokens, int256[] memory _deltaQuantities) = getRebalanceDeltas();
+    for (uint256 i = 0; i < _deltaTokens.length; i++) {
+      if (_tokens[i] != _deltaTokens[i]) {
+        return false;
+      }
+      if (_deltaQuantities[i] < 0 && _quantities[i] < _deltaQuantities[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   function bid(address[] _tokens, int256[] _quantities)
     external
-    onlyAuctionPeriod()
   {
     Bid memory _bestBid = bestBid;
+    // First bid
     if (_bestBid.bidder == address(0)) {
+      require(acceptableBid(_tokens, _quantities));
       bestBid = Bid({
         bidder: msg.sender,
         tokens: _tokens,
@@ -365,6 +402,7 @@ contract RebalancingBsktToken is
       uint256 _totalUnits = totalUnits();
       escrow.escrowBid(_tokens, msg.sender, _quantities, _totalUnits);
       emit BidAccepted(msg.sender, _tokens, _quantities, _totalUnits);
+      // TODO: still need to check bids to make sure it's not malicious
     } else {
       if (compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)) {
         escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities, _totalUnits);
@@ -385,7 +423,7 @@ contract RebalancingBsktToken is
   // TODO: how to deal with no rebalance called, or something
 
   // snapshot the registry
-  function commitDelta() {
+  function commitDelta() public {
     (deltaTokens, deltaQuantities) = getRebalanceDeltas();
     state = State.OPT_OUT;
   }
@@ -396,43 +434,33 @@ contract RebalancingBsktToken is
   // costs fees for the fund
   function getRebalanceDeltas() public returns (address[] memory, int256[] memory) {
     address[] memory registryTokens = registry.getTokens();
-    address[] memory targetTokens = registryTokens.union(tokens);
+    emit LogAddresses(registryTokens);
+    address[] memory targetTokens = registryTokens.unionB(tokens);
     emit LogAddresses(targetTokens);
     uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
     emit LogQuantities(targetQuantities);
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
+    uint256 _totalUnits = totalUnits();
     for (uint256 i = 0; i < length; i++) {
       ERC20 erc20 = ERC20(targetTokens[i]);
-      // assert that balance is >= quantity recorded for that token
-      uint256 balance = erc20.balanceOf(address(this));
-      emit LogUInt256(balance);
+      // assert that quantity is >= quantity recorded for that token
+      uint256 quantity = erc20.balanceOf(address(this)).div(_totalUnits);
+      emit LogUInt256(quantity);
       // TODO: ensure no overflow
       // TODO: add safemath
-      deltas[i] = int256(targetQuantities[i]) - (int256(balance));
+      deltas[i] = int256(targetQuantities[i]) - (int256(quantity));
     }
     emit LogInt256s(deltas);
     return (targetTokens, deltas);
   }
 
   function creationUnit() public view returns (address[] memory, uint256[] memory) {
-    uint256 numTokens = tokens.length;
-    address[] memory _tokens = new address[](numTokens);
-    uint256[] memory _quantities = new uint256[](numTokens);
-    for (uint256 i = 0; i < numTokens; i += 1) {
-      _quantities[i] = quantities[i].div(totalSupply_);
-    }
-    return (_tokens, _quantities);
-  }
-
-  // TODO: Make stored and only update on rebalance. Should be cheaper on gas
-  function creationSize() public view returns (uint256) {
-    uint256 optimal = quantities.map(logFloor).reduce(min);
-    return pow(10, max(uint256(decimals).sub(optimal), 1));
+    return (tokens, quantities);
   }
 
   function totalUnits() public view returns (uint256) {
-    return totalSupply_.div(creationSize());
+    return totalSupply_.div(creationSize);
   }
 
   // @dev Mints new tokens
@@ -503,5 +531,10 @@ contract RebalancingBsktToken is
   function MAX_UINT256() internal pure returns (uint256) {
     return 2 ** 256 - 1;
   }
+
+  function isNonZero(uint256 n) internal pure returns (bool) {
+    return n != 0;
+  }
+
 
 }
