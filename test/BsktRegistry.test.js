@@ -3,6 +3,7 @@ const ERC20Token = artifacts.require('ERC20Token');
 
 const _ = require('underscore');
 const BigNumber = require('bignumber.js');
+const assertRevert = require('./helpers/assertRevert.js');
 
 
 contract('BsktRegistry', function(accounts) {
@@ -17,7 +18,7 @@ contract('BsktRegistry', function(accounts) {
     for (let i = 0; i < expectedTokens.length; i++) {
       const index = _.indexOf(tokens, expectedTokens[i]);
       assert.notEqual(index, -1, 'should contain token')
-      assert.equal(quantities[index], expectedQuantities[i], 'should contain quantity at correct index')
+      assert.equal(quantities[index].toNumber(), expectedQuantities[i], 'should contain quantity at correct index')
     }
   }
 
@@ -27,6 +28,7 @@ contract('BsktRegistry', function(accounts) {
     let bsktRegistry;
     const owner = accounts[0];
     const dataManager = accounts[1];
+    const user1 = accounts[2];
 
     beforeEach(async function () {
       feeAmount = 0;
@@ -55,6 +57,51 @@ contract('BsktRegistry', function(accounts) {
       // (There's that library but it uses the bad should.be syntax)
       assert.isTrue(quantities[0].eq(new BigNumber(0)));
       assert.isTrue(quantities[1].eq(new BigNumber(0)));
+    });
+
+    it('should get entry', async function() {
+      const quantity = await bsktRegistry.get.call(tokenA.address, { from: user1 });
+      assert.isTrue(quantity.eq(new BigNumber(0)));
+    });
+
+    it('should batch set', async function() {
+      const targetTokens = [tokenA.address, tokenC.address, tokenB.address];
+      const targetQuantities = [314, 159, 265];
+      await bsktRegistry.batchSet(targetTokens, targetQuantities, { from: dataManager });
+      const tokens = await bsktRegistry.getTokens.call();
+      const quantities = await bsktRegistry.getAllQuantities.call();
+      checkEntries(tokens, quantities, targetTokens, targetQuantities);
+    });
+
+    it('should withdraw tokens', async function() {
+      // Consider scenario where tokens accidentally sent directly to registry contract
+      await feeToken.mint(bsktRegistry.address, 10**18, { from: owner });
+      const registryFeeTokenBalanceStart = await feeToken.balanceOf.call(bsktRegistry.address);
+      const ownerFeeTokenBalanceStart = await feeToken.balanceOf.call(owner);
+      await bsktRegistry.withdrawTokens(feeToken.address, 10**18, { from: dataManager });
+      const registryFeeTokenBalanceEnd = await feeToken.balanceOf.call(bsktRegistry.address);
+      const ownerFeeTokenBalanceEnd = await feeToken.balanceOf.call(dataManager);
+
+      assert.isTrue(registryFeeTokenBalanceStart.minus(registryFeeTokenBalanceEnd).eq(10**18));
+      assert.isTrue(ownerFeeTokenBalanceEnd.minus(ownerFeeTokenBalanceStart).eq(10**18));
+    });
+
+    it('should fail to withdraw tokens for non-owner', async function() {
+      try {
+        await feeToken.mint(bsktRegistry.address, 10**18, { from: owner });
+        await bsktRegistry.withdrawTokens(feeToken.address, 10**18, { from: user1 });
+      } catch(e) {
+        assertRevert(e);
+      }
+    });
+
+    it('should fail to withdraw tokens when insufficient balance', async function() {
+      try {
+        await feeToken.mint(bsktRegistry.address, 10**18, { from: owner });
+        await bsktRegistry.withdrawTokens(feeToken.address, 100**18, { from: dataManager });
+      } catch(e) {
+        assertRevert(e);
+      }
     });
 
   });
@@ -96,9 +143,11 @@ contract('BsktRegistry', function(accounts) {
     });
 
     it('should remove entry', async function() {
+      const didRemove = await bsktRegistry.remove.call(tokenC.address, { from: dataManager });
       await bsktRegistry.remove(tokenC.address, { from: dataManager });
       const tokens = await bsktRegistry.getTokens.call();
       const quantities = await bsktRegistry.getAllQuantities.call();
+      assert.equal(didRemove, true, 'should return true');
       checkEntries(
         tokens,
         quantities,
@@ -107,12 +156,25 @@ contract('BsktRegistry', function(accounts) {
       );
     });
 
+    it('should fail to remove entry', async function() {
+      const didRemove = await bsktRegistry.remove.call(tokenE.address, { from: dataManager });
+      await bsktRegistry.remove(tokenE.address, { from: dataManager });
+      const tokens = await bsktRegistry.getTokens.call();
+      const quantities = await bsktRegistry.getAllQuantities.call();
+      assert.equal(didRemove, false, 'should return false');
+      checkEntries(
+        tokens,
+        quantities,
+        [tokenA.address, tokenB.address, tokenC.address, tokenD.address],
+        [10, 11091, 31124, 7962]
+      );
+    });
+
     it('should remove first entry', async function() {
     });
 
     it('should remove all entries', async function() {
     });
-
 
     it('should get quantities', async function() {
       const quantities = await bsktRegistry.getQuantities.call([tokenD.address, tokenC.address, tokenB.address, tokenA.address]);
@@ -135,6 +197,21 @@ contract('BsktRegistry', function(accounts) {
       assert.isTrue(quantities[1].eq(new BigNumber(11091)));
       assert.isTrue(quantities[2].eq(new BigNumber(0)));
     });
+
+    it('should get entry', async function() {
+      const quantity = await bsktRegistry.get.call(tokenC.address, { from: user1 });
+      assert.isTrue(quantity.eq(new BigNumber(31124)));
+    });
+
+    it('should batch set and overwrite', async function() {
+      const targetTokens = [tokenA.address, tokenC.address, tokenB.address];
+      const targetQuantities = [314, 159, 265];
+      await bsktRegistry.batchSet(targetTokens, targetQuantities, { from: dataManager });
+      const tokens = await bsktRegistry.getTokens.call();
+      const quantities = await bsktRegistry.getAllQuantities.call();
+      checkEntries(tokens, quantities, targetTokens, targetQuantities);
+    });
+
 
   });
 
@@ -162,7 +239,7 @@ contract('BsktRegistry', function(accounts) {
 
     it('should charge fee for reading quantities', async function() {
       await bsktRegistry.set(0, tokenA.address, 10, { from: dataManager });
-      const user1BalanceStartFeeToken = await feeToken.balanceOf.call(user1)
+      const user1BalanceStartFeeToken = await feeToken.balanceOf.call(user1);
       const tokens = await bsktRegistry.getTokens.call({ from: user1 });
       await bsktRegistry.getQuantities(tokens, { from: user1 });
       const user1BalanceEndFeeToken = await feeToken.balanceOf.call(user1)
@@ -173,7 +250,7 @@ contract('BsktRegistry', function(accounts) {
     });
 
     it('should charge fee for reading all quantities', async function() {
-      const user1BalanceStartFeeToken = await feeToken.balanceOf.call(user1)
+      const user1BalanceStartFeeToken = await feeToken.balanceOf.call(user1);
       const tokens = await bsktRegistry.getTokens.call({ from: user1 });
       await bsktRegistry.getAllQuantities({ from: user1 });
       const user1BalanceEndFeeToken = await feeToken.balanceOf.call(user1)
@@ -184,6 +261,13 @@ contract('BsktRegistry', function(accounts) {
     });
 
     it('should fail when insufficient fees', async function() {
+    });
+
+    it('should get entry and charge fee', async function() {
+      const feeTokenBalanceStart = await feeToken.balanceOf.call(user1);
+      await bsktRegistry.get(tokenA.address, { from: user1 });
+      const feeTokenBalanceEnd = await feeToken.balanceOf.call(user1);
+      assert.isTrue(feeTokenBalanceStart.minus(feeTokenBalanceEnd).eq(feeAmount), 'correct fee amount should be deducted');
     });
 
   });
