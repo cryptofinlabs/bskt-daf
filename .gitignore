@@ -1,5 +1,6 @@
 /*solidity-coverage*/
 coverage.json
 coverage/
-coverateEnv
+coverageEnv/
 scTopics
+allFiredEvents

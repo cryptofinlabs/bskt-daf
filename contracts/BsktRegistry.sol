@@ -1,6 +1,5 @@
 pragma solidity 0.4.24;
 pragma experimental "v0.5.0";
-//pragma experimental ABIEncoderV2;
 
 
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
@@ -21,6 +20,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   address public beneficiary;
   ERC20 public feeToken;
   uint256 public readFeeAmount;
+
   // Internal to enforce fees
   address[] internal tokens;
   uint256[] internal quantities;
@@ -30,30 +30,32 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   event Read(address from, uint256 feeAmount);
 
   modifier checkInvariants() {
+    require(tokens.length == quantities.length);
     _;
     assert(tokens.length == quantities.length);
   }
 
-  // TODO: pull out into library contract
-  modifier chargeFee() {
-    if (readFeeAmount > 0) {
-      require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
-    }
-    _;
-  }
+  //// TODO: pull out into library contract
+  //modifier chargeFee() {
+    //if (readFeeAmount > 0) {
+      //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
+    //}
+    //_;
+  //}
 
-  // should feeToken be variable?
-  function setReadFee(address _token, uint256 _amount) external onlyOwner {
-    //feeToken = ERC20(_token);  // Ignore since for now fund sets in constructor
-    // In future could add a callback to fund to get updated
-    readFeeAmount = _amount;
-  }
-
+  // === CONSTRUCTOR ===
 
   constructor(address _beneficiary, address _feeToken, uint256 _amount) public {
     beneficiary = _beneficiary;
     feeToken = ERC20(_feeToken);
     readFeeAmount = _amount;
+  }
+
+  // === PUBLIC FUNCTIONS ===
+
+  function batchSet(address[] memory _tokens, uint256[] memory _quantities) public onlyOwner checkInvariants {
+    tokens = _tokens;
+    quantities = _quantities;
   }
 
   function set(uint256 index, address token, uint256 quantity) public onlyOwner checkInvariants {
@@ -66,24 +68,26 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     }
   }
 
-  function remove(address token) public onlyOwner {
+  function remove(address token) public onlyOwner returns (bool) {
     (uint256 index, bool isIn) = tokens.indexOf(token);
     if (!isIn) {
-      return;
+      return false;
+    } else {
+      tokens.sRemoveIndex(index);
+      quantities.sRemoveIndex(index);
+      return true;
     }
-    tokens.sRemoveIndex(index);
-    quantities.sRemoveIndex(index);
   }
 
   function get(address token) public returns (uint256) {
     // token interact
     require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount), "fee could not be collected");
-    (uint256 index,) = tokens.indexOf(token);
-    return index;
-  }
-
-  function getTokens() public view returns (address[] memory) {
-    return tokens;
+    (uint256 index, bool isIn) = tokens.indexOf(token);
+    if (!isIn) {
+      return 0;
+    } else {
+      return quantities[index];
+    }
   }
 
   // Careful, O(n^2)
@@ -110,9 +114,15 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     return quantities;
   }
 
+  // === VIEW FUNCTIONS ===
+
+  function getTokens() public view returns (address[] memory) {
+    return tokens;
+  }
+
   // === ONLY OWNER ===
 
-  function withdraw(address _token, uint256 _amount)
+  function withdrawTokens(address _token, uint256 _amount)
     external
     onlyOwner
   {
