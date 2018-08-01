@@ -20,6 +20,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   address public beneficiary;
   ERC20 public feeToken;
   uint256 public readFeeAmount;
+
   // Internal to enforce fees
   address[] internal tokens;
   uint256[] internal quantities;
