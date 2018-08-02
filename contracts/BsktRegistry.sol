@@ -60,6 +60,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   }
 
   function set(uint256 index, address token, uint256 quantity) public onlyOwner checkInvariants {
+    // only if it's greater than by one. otherwise it should fail or pad
     if (index >= tokens.length) {
       tokens.push(token);
       quantities.push(quantity);

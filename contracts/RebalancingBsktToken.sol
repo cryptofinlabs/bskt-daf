@@ -239,7 +239,6 @@ contract RebalancingBsktToken is
     escrow.releaseBid(_bestBid.tokens, address(this), _bestBid.quantities, _totalUnits);
     for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
       if (_bestBid.quantities[i] < 0) {
-        // quantity
         uint256 amount = uint256(-_bestBid.quantities[i]).mul(_totalUnits);
         ERC20(_bestBid.tokens[i]).transfer(bestBid.bidder, amount);
       }
@@ -438,7 +437,7 @@ contract RebalancingBsktToken is
 
     address[] memory registryTokens = registry.getTokens();
     emit LogAddresses(registryTokens);
-    address[] memory targetTokens = registryTokens.unionB(tokens);
+    address[] memory targetTokens = registryTokens.union(tokens);
     emit LogAddresses(targetTokens);
     uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
     emit LogQuantities(targetQuantities);
