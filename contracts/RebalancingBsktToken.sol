@@ -433,6 +433,9 @@ contract RebalancingBsktToken is
   // deltas required. + means this contract needs to buy, - means sell
   // costs fees for the fund
   function getRebalanceDeltas() public returns (address[] memory, int256[] memory) {
+    uint256 _totalUnits = totalUnits();
+    require(_totalUnits > 0);
+
     address[] memory registryTokens = registry.getTokens();
     emit LogAddresses(registryTokens);
     address[] memory targetTokens = registryTokens.unionB(tokens);
@@ -441,7 +444,6 @@ contract RebalancingBsktToken is
     emit LogQuantities(targetQuantities);
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
-    uint256 _totalUnits = totalUnits();
     for (uint256 i = 0; i < length; i++) {
       ERC20 erc20 = ERC20(targetTokens[i]);
       // assert that quantity is >= quantity recorded for that token

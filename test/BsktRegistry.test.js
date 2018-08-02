@@ -3,6 +3,7 @@ const ERC20Token = artifacts.require('ERC20Token');
 
 const _ = require('underscore');
 const BigNumber = require('bignumber.js');
+
 const assertRevert = require('./helpers/assertRevert.js');
 
 
