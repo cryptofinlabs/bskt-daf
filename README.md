@@ -70,3 +70,6 @@ add proxy so only one contract has to be approved
   - The current implementation has been modified to treat sales as 100% so it can still work with perfect bids
     - commented out requireSorted, so it'll just compare left to right based on whatever order the union gives
       - any overall better bid should still beat lesser bids
+
+## Testing
+May have to restart ganache-cli every time to reset timestamp

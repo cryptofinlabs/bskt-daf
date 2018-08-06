@@ -5,12 +5,14 @@ const RebalancingBsktToken = artifacts.require('RebalancingBsktToken');
 
 const BigNumber = require('bignumber.js');
 const _ = require('underscore');
-const tempo = require('@digix/tempo');
+const tempo = require('@digix/tempo')(web3);
 
 const assertRevert = require('./helpers/assertRevert.js');
 
 
 const NATURAL_UNIT = 10**18;
+const HOUR = 60 * 60;
+const DAY = 24 * HOUR;
 
 
 // === HELPER FUNCTIONS ===
@@ -29,6 +31,61 @@ function computeBalancesDiff(balancesStart, balancesEnd) {
   });
 }
 
+function currentTime() {
+  let latestBlock = web3.eth.getBlock('latest');
+  return latestBlock.timestamp;
+}
+
+// Moves within current interval
+async function moveToPeriod(
+  period,
+  lifecycle
+) {
+  let xIntervalStart = Math.floor(currentTime() / lifecycle.xInterval) * lifecycle.xInterval + lifecycle.xOffset;
+
+  let optOutIntervalStart = xIntervalStart;
+  let optOutIntervalEnd = xIntervalStart + lifecycle.optOutDuration;
+
+  let auctionIntervalStart = optOutIntervalEnd;
+  let auctionIntervalEnd = auctionIntervalStart + lifecycle.auctionDuration;
+
+  let rebalanceIntervalStart = auctionIntervalEnd;
+  let rebalanceIntervalEnd = rebalanceIntervalStart + lifecycle.rebalanceDuration;
+
+  let openIntervalStart = rebalanceIntervalEnd;
+
+  let delta;
+  switch (period) {
+    case 'OPT_OUT':
+      delta = optOutIntervalStart - currentTime();
+      if (delta > 0) {
+        await tempo.wait(delta);
+      }
+      break;
+    case 'AUCTION':
+      delta = auctionIntervalStart - currentTime();
+      if (delta > 0) {
+        await tempo.wait(delta);
+      }
+      break;
+    case 'REBALANCE':
+      delta = rebalanceIntervalStart - currentTime();
+      if (delta > 0) {
+        await tempo.wait(delta);
+      }
+      break;
+  }
+}
+
+// Moves to start of next period
+async function waitForStartNextPeriod(lifecycle) {
+  const xIntervalNextStart = (Math.floor(currentTime() / lifecycle.xInterval) + 1) * lifecycle.xInterval;
+  const delta = xIntervalNextStart - currentTime();
+  if (delta > 0) {
+    await tempo.wait(delta);
+  }
+}
+
 // balances decorator?
 
 // === TESTS ===
@@ -38,17 +95,33 @@ contract('RebalancingBsktToken', function(accounts) {
   async function setupRebalancingBsktToken(
     feeAmount,
     numTokens,
-    quantities
+    quantities,
+    xInterval = 7 * 24 * 60 * 60,  // Roughly weekly
+    xOffset = 0,
+    auctionDuration = 2 * 24 * 60 * 60,
+    optOutDuration = 1 * 24 * 60 * 60,
+    rebalanceDuration = 1 * 24 * 60 * 60,
   ) {
     let state = {};
     const isFee = feeAmount !== 0;
 
+    state.feeAmount = feeAmount;
+    state.quantities = quantities;
+    state.lifecycle = {
+      xInterval,
+      xOffset,
+      auctionDuration,
+      optOutDuration,
+      rebalanceDuration
+    };
+
     state.owner = accounts[0];
     state.dataManager = accounts[1];
     state.user1 = accounts[2];
-    state.bidder1 = accounts[3];  // TODO: refactor tests to use bidder1
-    state.feeAmount = feeAmount;
-    state.quantities = quantities;
+    state.bidder1 = accounts[3];
+
+    await waitForStartNextPeriod(state.lifecycle);
+
     state.feeToken = await ERC20Token.new({from: state.owner});
     state.bsktRegistry = await BsktRegistry.new(state.dataManager, state.feeToken.address, state.feeAmount, {from: state.dataManager});
     state.tokens = [];
@@ -64,12 +137,11 @@ contract('RebalancingBsktToken', function(accounts) {
       isFee ? [feeAmount].concat(quantities) : quantities,
       10**18,
       state.bsktRegistry.address,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      xInterval,
+      xOffset,
+      auctionDuration,
+      optOutDuration,
+      rebalanceDuration,
       'RebalancingBsktToken',
       'RBT',
       { from: state.owner }
@@ -98,7 +170,7 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
 
-    it('should get rebalance deltas ', async function() {
+    it('should get rebalance deltas', async function() {
       await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
 
       await state.bsktRegistry.set(0, state.tokens[0].address, 100, { from: state.dataManager });
@@ -161,6 +233,7 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.bsktRegistry.set(0, state.tokens[0].address, 50, { from: state.dataManager });
       await state.bsktRegistry.set(1, state.tokens[2].address, 150, { from: state.dataManager });
 
+      await moveToPeriod('AUCTION', state.lifecycle);
       const bidTokens = [state.tokens[2].address, state.tokens[0].address, state.tokens[1].address];
       const bidQuantities = [150, -50, -100];
       await state.rebalancingBsktToken.bid(bidTokens, bidQuantities, { from: state.bidder1 });
@@ -197,10 +270,12 @@ contract('RebalancingBsktToken', function(accounts) {
 
       const bidderBalancesStart = await queryBalances(state.bidder1, state.tokens);
 
+      await moveToPeriod('AUCTION', state.lifecycle);
       const bidTokens = [state.tokens[2].address, state.tokens[0].address, state.tokens[1].address];
       const bidQuantities = [150, -50, -100];
       await state.rebalancingBsktToken.bid(bidTokens, bidQuantities, { from: state.bidder1 });
 
+      await moveToPeriod('REBALANCE', state.lifecycle);
       await state.rebalancingBsktToken.rebalance({ from: state.bidder1 });
 
       const bidderBalancesEnd = await queryBalances(state.bidder1, state.tokens);
@@ -379,10 +454,12 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.bsktRegistry.set(1, state.tokens[0].address, 1500, { from: state.dataManager });
       await state.bsktRegistry.set(3, state.tokens[2].address, 30000, { from: state.dataManager });
 
+      await moveToPeriod('AUCTION', state.lifecycle);
       const bidTokens = [state.tokens[0].address, state.tokens[2].address, state.feeToken.address, state.tokens[1].address, state.tokens[3].address, state.tokens[4].address];
       const bidQuantities = [500, -1200, 0, 0, 0, 0];
       await state.rebalancingBsktToken.bid(bidTokens, bidQuantities, { from: state.bidder1 });
 
+      await moveToPeriod('REBALANCE', state.lifecycle);
       await state.rebalancingBsktToken.rebalance({ from: state.bidder1 });
 
       const tokenABalance = await state.tokens[0].balanceOf.call(state.rebalancingBsktToken.address);

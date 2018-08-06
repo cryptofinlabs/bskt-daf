@@ -42,6 +42,7 @@ contract RebalancingBsktToken is
   }
 
   enum FN {
+    COMMIT_DELTA,
     ISSUE,
     REDEEM,
     BID,
@@ -113,21 +114,25 @@ contract RebalancingBsktToken is
     uint256 xIntervalStart = now.div(xInterval).mul(xInterval).add(xOffset);
 
     uint256 optOutIntervalStart = xIntervalStart;
-    uint256 optOutIntervalEnd = xIntervalStart.add(auctionOffset);
+    uint256 optOutIntervalEnd = xIntervalStart.add(optOutDuration);
 
-    uint256 auctionIntervalStart = xIntervalStart.add(auctionOffset);
+    uint256 auctionIntervalStart = optOutIntervalEnd;
     uint256 auctionIntervalEnd = auctionIntervalStart.add(auctionDuration);
 
     uint256 rebalanceIntervalStart = auctionIntervalEnd;
     uint256 rebalanceIntervalEnd = rebalanceIntervalStart.add(rebalanceDuration);
 
     uint256 openIntervalStart = rebalanceIntervalEnd;
-    // openIntervalEnd is whatever time is left
+    uint256 openIntervalEnd = now.div(xInterval).add(1).mul(xInterval).add(xOffset);
 
-    if (fn == FN.ISSUE || fn == FN.REDEEM) {
+    if (fn == FN.COMMIT_DELTA) {
+      require(state == State.OPEN || state == State.OPT_OUT);
+      require(auctionIntervalStart <= now && now < auctionIntervalEnd);
+    } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
       require(state == State.OPT_OUT);
       require(optOutIntervalStart <= now && now < optOutIntervalEnd || openIntervalStart <= now);
     } else if (fn == FN.BID) {
+      // The first bid will transition state from opt out to auction
       require(state == State.OPT_OUT || state == State.AUCTIONS_OPEN);
       require(auctionIntervalStart <= now && now < auctionIntervalEnd);
       if (state == State.OPT_OUT && auctionIntervalStart <= now) {
@@ -137,7 +142,7 @@ contract RebalancingBsktToken is
       // require(state == State.AUCTIONS_OPEN);  // What if no bids were made, so the state never transitioned from OPT_OUT to AUCTIONS_OPEN?
       require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd);
     } else {
-      revert();
+      revert("Error: Period not recognized.");
     }
   }
 
@@ -152,7 +157,6 @@ contract RebalancingBsktToken is
     address _registry,
     uint256 _xInterval,
     uint256 _xOffset,
-    uint256 _auctionOffset,
     uint256 _auctionDuration,
     uint256 _optOutDuration,
     uint256 _rebalanceDuration,
@@ -163,7 +167,7 @@ contract RebalancingBsktToken is
   {
     //require(_tokens.length > 0);  // Will need this to prevent attack - can mint infinite tokens
     require(_tokens.length == _quantities.length);
-    //require(auctionOffset.add(auctionDuration).add(rebalanceDuration) <= xInterval);
+    //require(optOutDuration.add(auctionDuration).add(rebalanceDuration) <= xInterval);
     tokens = _tokens;
     quantities = _quantities;
     creationSize = _creationSize;
@@ -173,7 +177,6 @@ contract RebalancingBsktToken is
 
     xInterval = _xInterval;
     xOffset = _xOffset;
-    auctionOffset = _auctionOffset;
     auctionDuration = _auctionDuration;
     optOutDuration = _optOutDuration;
     rebalanceDuration = _rebalanceDuration;
@@ -181,13 +184,14 @@ contract RebalancingBsktToken is
     ERC20 feeToken = registry.feeToken();
     feeToken.approve(registry, MAX_UINT256());
 
+    //state = State.OPT_OUT;
   }
 
   // === EXTERNAL FUNCTIONS ===
 
   function issue(uint256 amount)
     external
-    //onlyDuringValidInterval(FN.ISSUE)
+    onlyDuringValidInterval(FN.ISSUE)
   {
     require(amount > 0);
     require((totalSupply_ + amount) > totalSupply_);
@@ -207,6 +211,7 @@ contract RebalancingBsktToken is
 
   function redeem(uint256 amount, address[] tokensToSkip)
     external
+    onlyDuringValidInterval(FN.REDEEM)
   {
     require(amount > 0);
     require(amount <= totalSupply_);
@@ -280,6 +285,7 @@ contract RebalancingBsktToken is
   // Anyone can call this
   function rebalance()
     external
+    onlyDuringValidInterval(FN.REBALANCE)
   {
     Bid memory _bestBid = bestBid;
     require(_bestBid.bidder != address(0));
@@ -388,6 +394,7 @@ contract RebalancingBsktToken is
 
   function bid(address[] _tokens, int256[] _quantities)
     external
+    onlyDuringValidInterval(FN.BID)
   {
     Bid memory _bestBid = bestBid;
     // First bid
@@ -422,7 +429,10 @@ contract RebalancingBsktToken is
   // TODO: how to deal with no rebalance called, or something
 
   // snapshot the registry
-  function commitDelta() public {
+  function commitDelta()
+    public
+    onlyDuringValidInterval(FN.COMMIT_DELTA)
+  {
     (deltaTokens, deltaQuantities) = getRebalanceDeltas();
     state = State.OPT_OUT;
   }
