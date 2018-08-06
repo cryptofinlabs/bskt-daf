@@ -14,8 +14,8 @@ contract Escrow is OnlyCore {
   // === EVENTS ===
 
   // would be nice to log actual amounts, but not sure if worth the computation on-chain
-  event Escrow(address[] tokens, address to, uint256[] amounts);
-  event Release(address[] tokens, address to, uint256[] amounts);
+  event EscrowBid(address[] tokens, address to, uint256[] amounts);
+  event ReleaseBid(address[] tokens, address to, uint256[] amounts);
 
   constructor(address core) OnlyCore(core) public {
   }
@@ -41,7 +41,7 @@ contract Escrow is OnlyCore {
         amounts[i] = amount;
       }
     }
-    emit Escrow(tokens, from, amounts);
+    emit EscrowBid(tokens, from, amounts);
   }
 
   function releaseBid(
@@ -62,7 +62,7 @@ contract Escrow is OnlyCore {
         amounts[i] = amount;
       }
     }
-    emit Release(tokens, to, amounts);
+    emit ReleaseBid(tokens, to, amounts);
   }
 
 }

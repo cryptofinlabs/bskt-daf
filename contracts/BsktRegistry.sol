@@ -27,7 +27,8 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   // === EVENTS ===
 
-  event Read(address from, uint256 feeAmount);
+  event Get(address from, uint256 feeAmount);
+  event Set(uint256 index, address token, uint256 quantity);
 
   modifier checkInvariants() {
     require(tokens.length == quantities.length);
@@ -59,6 +60,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   }
 
   function set(uint256 index, address token, uint256 quantity) public onlyOwner checkInvariants {
+    // only if it's greater than by one. otherwise it should fail or pad
     if (index >= tokens.length) {
       tokens.push(token);
       quantities.push(quantity);
@@ -66,6 +68,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
       tokens[index] = token;
       quantities[index] = quantity;
     }
+    emit Set(index, token, quantity);
   }
 
   function remove(address token) public onlyOwner returns (bool) {
@@ -83,6 +86,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     // token interact
     require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount), "fee could not be collected");
     (uint256 index, bool isIn) = tokens.indexOf(token);
+    emit Get(msg.sender, readFeeAmount);
     if (!isIn) {
       return 0;
     } else {
@@ -103,14 +107,14 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
         _quantities[i] = 0;  // Assume anything not in registry is 0
       }
     }
-    emit Read(msg.sender, readFeeAmount);
+    emit Get(msg.sender, readFeeAmount);
     return _quantities;
   }
 
   function getAllQuantities() public returns (uint256[] memory) {
     // token interact, require this
     require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
-    emit Read(msg.sender, readFeeAmount);
+    emit Get(msg.sender, readFeeAmount);
     return quantities;
   }
 
