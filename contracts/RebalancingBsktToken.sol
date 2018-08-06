@@ -55,8 +55,8 @@ contract RebalancingBsktToken is
 
   // Snapshot of the delta of tokens needed to rebalance
   // These are set by commitDelta
-  address[] internal deltaTokens;
-  int256[] internal deltaQuantities;
+  address[] public deltaTokens;
+  int256[] public deltaQuantities;
 
   BsktRegistry public registry;
   Escrow public escrow;
@@ -104,7 +104,7 @@ contract RebalancingBsktToken is
   // |     Opt-out    |                         |                                |
   // |------------------------------------------|--------------------------------|----------- ...
 
-  // intervals should always be [)
+  // intervals should always satisfy range [)
   modifier onlyDuringValidInterval(FN fn) {
     checkValidInterval(fn);
     _;
@@ -304,7 +304,7 @@ contract RebalancingBsktToken is
     emit Rebalance(msg.sender);
   }
 
-  // Assumes tokens and quantities are sorted
+  // Assumes tokens and deltas are sorted and separated such that all positives are first
   // Returns true if A is better, false if B is better
   // If equal, favors A
   // Should probably rename to something like "isBidBetter"
@@ -320,7 +320,9 @@ contract RebalancingBsktToken is
     require(tokensA.length == quantitiesA.length);
     require(tokensA.length == tokensB.length);
     require(tokensA.length == quantitiesB.length);
-    (address[] memory _deltaTokens, int256[] memory _deltaQuantities) = getRebalanceDeltas();
+
+    address[] memory _deltaTokens = deltaTokens;
+    int256[] memory _deltaQuantities = deltaQuantities;
     Rational.Rational256[] memory fillProportionA = new Rational.Rational256[](_deltaTokens.length);
     Rational.Rational256[] memory fillProportionB = new Rational.Rational256[](_deltaTokens.length);
     for (uint256 i = 0; i < _deltaTokens.length; i++) {
@@ -333,6 +335,7 @@ contract RebalancingBsktToken is
         // If tokens are being sold (negative delta), entry is 100
         // It's assumed bidders act in their own economic interest, so they
         // wouldn't leave any tokens on the table
+        // Also anything with deltaQuantity 0 is automatically 100%
         fillProportionA[i] = Rational.Rational256({ n: 100, d: 1 });
         fillProportionB[i] = Rational.Rational256({ n: 100, d: 1 });
         continue;
@@ -368,8 +371,8 @@ contract RebalancingBsktToken is
   // If equal, favors B
   function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
     internal
-    //requireSortedRational256(A)
-    //requireSortedRational256(B)
+    requireSortedRational256(A)
+    requireSortedRational256(B)
     returns (bool)
   {
     for (uint256 i = 0; i < A.length; i++) {
@@ -388,7 +391,8 @@ contract RebalancingBsktToken is
   // Checks that the bid isn't trying to take more funds than it should
   function acceptableBid(address[] _tokens, int256[] _quantities) internal view returns (bool) {
     // todo; use the stored ones instead
-    (address[] memory _deltaTokens, int256[] memory _deltaQuantities) = getRebalanceDeltas();
+    address[] memory _deltaTokens = deltaTokens;
+    int256[] memory _deltaQuantities = deltaQuantities;
     for (uint256 i = 0; i < _deltaTokens.length; i++) {
       if (_tokens[i] != _deltaTokens[i]) {
         return false;
@@ -445,6 +449,29 @@ contract RebalancingBsktToken is
     (deltaTokens, deltaQuantities) = getRebalanceDeltas();
   }
 
+  function separatePositiveNegative(address[] memory _tokens, int256[] memory _quantities)
+   internal
+   returns (address[] memory, int256[] memory)
+  {
+    address[] memory _separatedTokens = new address[](_tokens.length);
+    int256[] memory _separatedQuantities = new int256[](_tokens.length);
+    uint256 startPointer = 0;
+    uint256 endPointer = _tokens.length - 1;
+    for (uint256 i = 0; i < _tokens.length; i++) {
+      if (_quantities[i] > 0) {
+        _separatedTokens[startPointer] = _tokens[i];
+        _separatedQuantities[startPointer] = _quantities[i];
+        startPointer++;
+      } else {
+        _separatedTokens[endPointer] = _tokens[i];
+        _separatedQuantities[endPointer] = _quantities[i];
+        endPointer = endPointer.sub(1);
+      }
+    }
+    emit LogInt256s(_separatedQuantities);
+    return (_separatedTokens, _separatedQuantities);
+  }
+
   // naming of target vs all vs registry?
   // TODO: handle invalid data
   // deltas required. + means this contract needs to buy, - means sell
@@ -470,8 +497,7 @@ contract RebalancingBsktToken is
       // TODO: add safemath
       deltas[i] = int256(targetQuantities[i]) - (int256(quantity));
     }
-    emit LogInt256s(deltas);
-    return (targetTokens, deltas);
+    return separatePositiveNegative(targetTokens, deltas);
   }
 
   function creationUnit() public view returns (address[] memory, uint256[] memory) {
@@ -510,6 +536,14 @@ contract RebalancingBsktToken is
 
   function getQuantities() external view returns (uint256[] memory) {
     return quantities;
+  }
+
+  function getDeltaTokens() external view returns (address[] memory) {
+    return deltaTokens;
+  }
+
+  function getDeltaQuantities() external view returns (int256[] memory) {
+    return deltaQuantities;
   }
 
   // === MATH ===

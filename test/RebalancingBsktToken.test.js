@@ -99,6 +99,8 @@ async function waitForStartNextPeriod(lifecycle) {
 
 contract('RebalancingBsktToken', function(accounts) {
 
+  // numTokens Number of tokens to deploy. This is different from
+  // `quantities.length`, which are the token quantities to deploy with.
   async function setupRebalancingBsktToken(
     feeAmount,
     numTokens,
@@ -140,7 +142,7 @@ contract('RebalancingBsktToken', function(accounts) {
       state.tokens.push(token);
     }
 
-    const tokenAddresses = _.pluck(state.tokens.slice(0, numTokens), 'address');
+    const tokenAddresses = _.pluck(state.tokens.slice(0, quantities.length), 'address');
     state.rebalancingBsktToken = await RebalancingBsktToken.new(
       isFee ? [state.feeToken.address].concat(tokenAddresses) : tokenAddresses,
       isFee ? [10**13].concat(quantities) : quantities,
@@ -179,7 +181,6 @@ contract('RebalancingBsktToken', function(accounts) {
       state = await setupRebalancingBsktToken(0, 0, []);
     });
 
-
     it('should get rebalance deltas', async function() {
       await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
 
@@ -215,17 +216,133 @@ contract('RebalancingBsktToken', function(accounts) {
       }
     });
 
+  });
+
+  context('bid comparison', function() {
+    let state;
+
+    beforeEach(async function () {
+      state = await setupRebalancingBsktToken(0, 10, [100, 0, 100, 100, 100]);
+
+      await state.rebalancingBsktToken.issue(NATURAL_UNIT, { from: state.user1 });
+
+      await state.bsktRegistry.set(0, state.tokens[0].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(1, state.tokens[1].address, 0, { from: state.dataManager });
+      await state.bsktRegistry.set(2, state.tokens[2].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(3, state.tokens[3].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(4, state.tokens[4].address, 200, { from: state.dataManager });
+
+    });
+
     it('should compare bids correctly', async function() {
-      await state.bsktRegistry.set(0, state.tokens[0].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(1, state.tokens[1].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(2, state.tokens[2].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(3, state.tokens[3].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(4, state.tokens[4].address, 100, { from: state.dataManager });
+      const bid1 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[2].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[1].address,
+        ],
+        deltas: [85, 85, 85, 85, 0]
+      }
+      const bid2 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[2].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[1].address,
+        ],
+        deltas: [70, 70, 70, 70, 0]
+      }
+      await state.rebalancingBsktToken.commitDelta();
 
-      await state.bsktRegistry.set(0, state.tokens[0].address, 0, { from: state.dataManager });
-      await state.bsktRegistry.set(4, state.tokens[4].address, 10, { from: state.dataManager });
+      const isBid1Better = await state.rebalancingBsktToken.compareBids.call(bid1.tokens, bid1.deltas, bid2.tokens, bid2.deltas);
+      assert.equal(isBid1Better, true);
+    });
 
-      // todo: assert
+    it('should compare bids correctly with slightly better bid', async function() {
+      const bid1 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[2].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[1].address,
+        ],
+        deltas: [70, 70, 70, 71, 0]
+      }
+      const bid2 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[2].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[1].address,
+        ],
+        deltas: [70, 70, 70, 70, 0]
+      }
+      await state.rebalancingBsktToken.commitDelta();
+
+      const isBid1Better = await state.rebalancingBsktToken.compareBids.call(bid1.tokens, bid1.deltas, bid2.tokens, bid2.deltas);
+      assert.equal(isBid1Better, true);
+    });
+
+    it('should compare bids correctly with non-greedy bid', async function() {
+      await state.bsktRegistry.set(2, state.tokens[2].address, 50, { from: state.dataManager });
+
+      // Bid 1 is worse despite taking 30 rather than 30 of `state.token[2]`
+      const bid1 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[2].address,
+          state.tokens[1].address,
+        ],
+        deltas: [69, 69, 69, -30, 0]
+      }
+      const bid2 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[2].address,
+          state.tokens[1].address,
+        ],
+        deltas: [70, 70, 70, -50, 0]
+      }
+      await state.rebalancingBsktToken.commitDelta();
+
+      const isBid1Better = await state.rebalancingBsktToken.compareBids.call(bid1.tokens, bid1.deltas, bid2.tokens, bid2.deltas);
+      assert.equal(isBid1Better, false);
+    });
+
+    it('should compare bids correctly with tie', async function() {
+      const bid1 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[2].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[1].address,
+        ],
+        deltas: [70, 70, 70, 70, 0]
+      }
+      const bid2 = {
+        tokens: [
+          state.tokens[0].address,
+          state.tokens[2].address,
+          state.tokens[3].address,
+          state.tokens[4].address,
+          state.tokens[1].address,
+        ],
+        deltas: [70, 70, 70, 70, 0]
+      }
+      await state.rebalancingBsktToken.commitDelta();
+
+      const isBid1Better = await state.rebalancingBsktToken.compareBids.call(bid1.tokens, bid1.deltas, bid2.tokens, bid2.deltas);
+      assert.equal(isBid1Better, false);
     });
 
   });
@@ -237,7 +354,7 @@ contract('RebalancingBsktToken', function(accounts) {
       state = await setupRebalancingBsktToken(0, 2, [100, 100]);
     });
 
-    it.only('should bid successfully for first bid', async function() {
+    it('should bid successfully for first bid', async function() {
       let creationSize = await state.rebalancingBsktToken.creationSize.call();
       await state.rebalancingBsktToken.issue(creationSize, { from: state.user1 });
 
@@ -366,7 +483,7 @@ contract('RebalancingBsktToken', function(accounts) {
     let state;
 
     beforeEach(async function () {
-      state = await setupRebalancingBsktToken(0, 4, [100, 5000, 31200, 123013]);
+      state = await setupRebalancingBsktToken(0, 5, [100, 5000, 31200, 123013]);
     });
 
     it('should correctly compute creationSize', async function() {
@@ -410,20 +527,20 @@ contract('RebalancingBsktToken', function(accounts) {
       let [targetTokens, deltas] = await state.rebalancingBsktToken.getRebalanceDeltas.call();
 
       assert.equal(targetTokens[0], state.tokens[4].address);
-      assert.equal(targetTokens[1], state.tokens[0].address);
-      assert.equal(targetTokens[2], state.tokens[1].address);
-      assert.equal(targetTokens[3], state.tokens[2].address);
-      assert.equal(targetTokens[4], state.tokens[3].address);
+      assert.equal(targetTokens[1], state.tokens[3].address);
+      assert.equal(targetTokens[2], state.tokens[2].address);
+      assert.equal(targetTokens[3], state.tokens[1].address);
+      assert.equal(targetTokens[4], state.tokens[0].address);
 
-      assert.isTrue(deltas[1].eq(0));
-      assert.isTrue(deltas[2].eq(-4900));
-      assert.isTrue(deltas[3].eq(-31100));
-      assert.isTrue(deltas[4].eq(-122913));
       assert.isTrue(deltas[0].eq(100));
+      assert.isTrue(deltas[1].eq(-122913));
+      assert.isTrue(deltas[2].eq(-31100));
+      assert.isTrue(deltas[3].eq(-4900));
+      assert.isTrue(deltas[4].eq(0));
     });
 
-    it('should get rebalance deltas for Bskt with some balances', async function() {
-      await state.rebalancingBsktToken.issue(10**19, { from: state.user1 });
+    it('should get rebalance deltas for Bskt with more total supply', async function() {
+      await state.rebalancingBsktToken.issue(10**20, { from: state.user1 });
 
       await state.bsktRegistry.set(0, state.tokens[0].address, 100, { from: state.dataManager });
       await state.bsktRegistry.set(1, state.tokens[1].address, 100, { from: state.dataManager });
@@ -434,16 +551,16 @@ contract('RebalancingBsktToken', function(accounts) {
       let [targetTokens, deltas] = await state.rebalancingBsktToken.getRebalanceDeltas.call();
 
       assert.equal(targetTokens[0], state.tokens[4].address);
-      assert.equal(targetTokens[1], state.tokens[0].address);
-      assert.equal(targetTokens[2], state.tokens[1].address);
-      assert.equal(targetTokens[3], state.tokens[2].address);
-      assert.equal(targetTokens[4], state.tokens[3].address);
+      assert.equal(targetTokens[1], state.tokens[3].address);
+      assert.equal(targetTokens[2], state.tokens[2].address);
+      assert.equal(targetTokens[3], state.tokens[1].address);
+      assert.equal(targetTokens[4], state.tokens[0].address);
 
-      assert.isTrue(deltas[1].eq(0));
-      assert.isTrue(deltas[2].eq(-4900));
-      assert.isTrue(deltas[3].eq(-31100));
-      assert.isTrue(deltas[4].eq(-122913));
       assert.isTrue(deltas[0].eq(100));
+      assert.isTrue(deltas[1].eq(-122913));
+      assert.isTrue(deltas[2].eq(-31100));
+      assert.isTrue(deltas[3].eq(-4900));
+      assert.isTrue(deltas[4].eq(0));
     });
 
     it('should bid', async function() {
@@ -457,8 +574,9 @@ contract('RebalancingBsktToken', function(accounts) {
     beforeEach(async function () {
       state = await setupRebalancingBsktToken(3141, 4, [1000, 5000, 31200, 123013]);
       await state.bsktRegistry.set(0, state.feeToken.address, 10**13, { from: state.dataManager });
-      await state.bsktRegistry.set(1, state.tokens[0].address, 1500, { from: state.dataManager });
-      await state.bsktRegistry.set(2, state.tokens[2].address, 31200, { from: state.dataManager });
+      await state.bsktRegistry.set(1, state.tokens[0].address, 1000, { from: state.dataManager });
+      await state.bsktRegistry.set(2, state.tokens[1].address, 5000, { from: state.dataManager });
+      await state.bsktRegistry.set(3, state.tokens[2].address, 31200, { from: state.dataManager });
       await state.bsktRegistry.set(4, state.tokens[3].address, 123013, { from: state.dataManager });
       let creationSize = await state.rebalancingBsktToken.creationSize.call();
       await state.rebalancingBsktToken.issue(creationSize, { from: state.user1 });
@@ -493,7 +611,7 @@ contract('RebalancingBsktToken', function(accounts) {
     it('should fail if bid tries to take more than it should', async function() {
     });
 
-    it.only('should commit delta', async function() {
+    it('should commit delta', async function() {
       await state.bsktRegistry.set(0, state.feeToken.address, 10**13 - 3141, { from: state.dataManager });
       await state.bsktRegistry.set(1, state.tokens[0].address, 100, { from: state.dataManager });
       await state.bsktRegistry.set(2, state.tokens[1].address, 6000, { from: state.dataManager });
@@ -505,18 +623,36 @@ contract('RebalancingBsktToken', function(accounts) {
 
       const dataManagerBalanceEnd = await queryBalances(state.dataManager, [state.feeToken]);
       const fundBalanceEnd = await queryBalances(state.rebalancingBsktToken.address, [state.feeToken]);
-
       const dataManagerBalanceDiff = computeBalancesDiff(dataManagerBalanceStart, dataManagerBalanceEnd);
       const fundBalanceDiff = computeBalancesDiff(fundBalanceStart, fundBalanceEnd);
 
       assert.isTrue(dataManagerBalanceDiff[0].eq(state.feeAmount), `balance diff should be ${state.feeAmount}`);
       assert.isTrue(fundBalanceDiff[0].eq(-state.feeAmount),  `balance diff should be ${-state.feeAmount}`);
 
+      // Order is affected by union implementation and sepatatePositiveNegative
+      const deltaTokens = await state.rebalancingBsktToken.getDeltaTokens.call();
+      const deltaQuantities = await state.rebalancingBsktToken.getDeltaQuantities.call();
+      const expectedDeltaTokens = [
+        state.tokens[1].address,
+        state.tokens[3].address,
+        state.tokens[3].address,
+        state.tokens[0].address,
+        state.feeToken.address,
+      ];
+      const expectedDeltaQuantities = [
+        1000,
+        0,
+        0,
+        -900,
+        0
+      ];
+      checkEntries(deltaTokens, deltaQuantities, expectedDeltaTokens, expectedDeltaQuantities);
+
       const fundState = await state.rebalancingBsktToken.state.call();
       assert.equal(fundState, STATE.OPT_OUT);
     });
 
-    it.only('should fail for commit delta with not enough time left in period', async function() {
+    it('should fail for commit delta with not enough time left in period', async function() {
       await moveToPeriod('OPT_OUT', state.lifecycle);
       await tempo.wait(18 * 60 * 60);  // Move to time with not enough opt out duration left until auction
       try {
