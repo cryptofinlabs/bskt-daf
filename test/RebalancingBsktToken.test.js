@@ -382,7 +382,7 @@ contract('RebalancingBsktToken', function(accounts) {
       assert.equal(user1BalanceB, 100 * 10**18, 'user1 state.tokens[1] balance should be unchanged');
       assert.equal(user1BalanceC, 100 * 10**18 - 150, 'user1 state.tokens[1] balance should be 150 less');
 
-      const fundState = await state.rebalancingBsktToken.state.call();
+      const fundState = await state.rebalancingBsktToken.status.call();
       assert.equal(fundState, STATE.AUCTIONS_OPEN);
       // assert that bestBid is correct
     });
@@ -631,8 +631,7 @@ contract('RebalancingBsktToken', function(accounts) {
 
       // Order is affected by union implementation and sepatatePositiveNegative
       const deltaTokens = await state.rebalancingBsktToken.getDeltaTokens.call();
-      const deltaQuantities = await state.rebalancingBsktToken.getDeltaQuantities.call();
-      const expectedDeltaTokens = [
+      const deltaQuantities = await state.rebalancingBsktToken.getDeltaQuantities.call(); const expectedDeltaTokens = [
         state.tokens[1].address,
         state.tokens[3].address,
         state.tokens[3].address,
@@ -648,7 +647,7 @@ contract('RebalancingBsktToken', function(accounts) {
       ];
       checkEntries(deltaTokens, deltaQuantities, expectedDeltaTokens, expectedDeltaQuantities);
 
-      const fundState = await state.rebalancingBsktToken.state.call();
+      const fundState = await state.rebalancingBsktToken.status.call();
       assert.equal(fundState, STATE.OPT_OUT);
     });
 

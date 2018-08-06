@@ -34,7 +34,7 @@ contract RebalancingBsktToken is
   }
 
   // these need better names
-  enum State {
+  enum Status {
     OPT_OUT,  // After snapshotting the delta, give investors some time to opt-out if they don't agree with the rebalance. I want a better name though
     AUCTIONS_OPEN,  // Bids being accepted
     // Rebalance
@@ -60,7 +60,7 @@ contract RebalancingBsktToken is
 
   BsktRegistry public registry;
   Escrow public escrow;
-  State public state;
+  Status public status;
 
   uint256 public xInterval;
   uint256 public xOffset;
@@ -81,13 +81,6 @@ contract RebalancingBsktToken is
   event RebalanceEnd();
   event Rebalance(address caller);
   event BidAccepted(address bidder, address[] tokens, int256[] quantities, uint256 totalUnits);  // tense is inconsistent
-
-  // tests
-  event OK();
-  event LogAddresses(address[] a);
-  event LogQuantities(uint256[] a);
-  event LogInt256s(int256[] a);
-  event LogUInt256(uint256 n);
 
   // === MODIFIERS ===
 
@@ -111,7 +104,7 @@ contract RebalancingBsktToken is
   }
 
   // add error messages
-  // also handles state transitions
+  // also handles status transitions
   function checkValidInterval(FN fn) internal {
     uint256 xIntervalStart = now.div(xInterval).mul(xInterval).add(xOffset);
 
@@ -128,25 +121,25 @@ contract RebalancingBsktToken is
     //uint256 openIntervalEnd = now.div(xInterval).add(1).mul(xInterval).add(xOffset);
 
     if (fn == FN.COMMIT_DELTA) {
-      require(state == State.OPEN || state == State.OPT_OUT);
+      require(status == Status.OPEN || status == Status.OPT_OUT);
       require(optOutIntervalEnd <= auctionIntervalStart);
-      if (state == State.OPEN) {
-        state = State.OPT_OUT;
+      if (status == Status.OPEN) {
+        status = Status.OPT_OUT;
       }
     } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
-      require(state == State.OPT_OUT);
+      require(status == Status.OPT_OUT);
       require(optOutIntervalStart <= now && now < optOutIntervalEnd || openIntervalStart <= now);
     } else if (fn == FN.BID) {
-      // The first bid will transition state from opt out to auction
-      require(state == State.OPT_OUT || state == State.AUCTIONS_OPEN);
+      // The first bid will transition status from opt out to auction
+      require(status == Status.OPT_OUT || status == Status.AUCTIONS_OPEN);
       require(auctionIntervalStart <= now && now < auctionIntervalEnd);
-      if (state == State.OPT_OUT && auctionIntervalStart <= now) {
-        state = State.AUCTIONS_OPEN;
+      if (status == Status.OPT_OUT && auctionIntervalStart <= now) {
+        status = Status.AUCTIONS_OPEN;
       }
     } else if (fn == FN.REBALANCE) {
-      // require(state == State.AUCTIONS_OPEN);  // What if no bids were made, so the state never transitioned from OPT_OUT to AUCTIONS_OPEN?
+      // require(status == Status.AUCTIONS_OPEN);  // What if no bids were made, so the status never transitioned from OPT_OUT to AUCTIONS_OPEN?
       require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd);
-      state = State.OPEN;
+      status = Status.OPEN;
     } else {
       revert("Error: Period not recognized.");
     }
@@ -192,7 +185,7 @@ contract RebalancingBsktToken is
     ERC20 feeToken = registry.feeToken();
     feeToken.approve(registry, MAX_UINT256());
 
-    //state = State.OPT_OUT;
+    status = Status.OPT_OUT;
   }
 
   // === EXTERNAL FUNCTIONS ===
@@ -468,7 +461,6 @@ contract RebalancingBsktToken is
         endPointer = endPointer.sub(1);
       }
     }
-    emit LogInt256s(_separatedQuantities);
     return (_separatedTokens, _separatedQuantities);
   }
 
@@ -481,18 +473,14 @@ contract RebalancingBsktToken is
     require(_totalUnits > 0);
 
     address[] memory registryTokens = registry.getTokens();
-    emit LogAddresses(registryTokens);
     address[] memory targetTokens = registryTokens.union(tokens);
-    emit LogAddresses(targetTokens);
     uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
-    emit LogQuantities(targetQuantities);
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
     for (uint256 i = 0; i < length; i++) {
       ERC20 erc20 = ERC20(targetTokens[i]);
       // assert that quantity is >= quantity recorded for that token
       uint256 quantity = erc20.balanceOf(address(this)).div(_totalUnits);
-      emit LogUInt256(quantity);
       // TODO: ensure no overflow
       // TODO: add safemath
       deltas[i] = int256(targetQuantities[i]) - (int256(quantity));
