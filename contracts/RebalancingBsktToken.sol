@@ -55,8 +55,8 @@ contract RebalancingBsktToken is
 
   // Snapshot of the delta of tokens needed to rebalance
   // These are set by commitDelta
-  address[] public deltaTokens;
-  int256[] public deltaQuantities;
+  address[] internal deltaTokens;
+  int256[] internal deltaQuantities;
 
   BsktRegistry public registry;
   Escrow public escrow;
@@ -110,24 +110,25 @@ contract RebalancingBsktToken is
     _;
   }
 
+  // add error messages
   function checkValidInterval(FN fn) internal {
     uint256 xIntervalStart = now.div(xInterval).mul(xInterval).add(xOffset);
 
-    uint256 optOutIntervalStart = xIntervalStart;
-    uint256 optOutIntervalEnd = xIntervalStart.add(optOutDuration);
+    uint256 optOutIntervalStart = now;
+    uint256 optOutIntervalEnd = now.add(optOutDuration);
 
-    uint256 auctionIntervalStart = optOutIntervalEnd;
+    uint256 auctionIntervalStart = xIntervalStart.add(auctionOffset);
     uint256 auctionIntervalEnd = auctionIntervalStart.add(auctionDuration);
 
     uint256 rebalanceIntervalStart = auctionIntervalEnd;
     uint256 rebalanceIntervalEnd = rebalanceIntervalStart.add(rebalanceDuration);
 
     uint256 openIntervalStart = rebalanceIntervalEnd;
-    uint256 openIntervalEnd = now.div(xInterval).add(1).mul(xInterval).add(xOffset);
+    //uint256 openIntervalEnd = now.div(xInterval).add(1).mul(xInterval).add(xOffset);
 
     if (fn == FN.COMMIT_DELTA) {
       require(state == State.OPEN || state == State.OPT_OUT);
-      require(auctionIntervalStart <= now && now < auctionIntervalEnd);
+      require(optOutIntervalEnd <= auctionIntervalStart);
     } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
       require(state == State.OPT_OUT);
       require(optOutIntervalStart <= now && now < optOutIntervalEnd || openIntervalStart <= now);
@@ -157,6 +158,7 @@ contract RebalancingBsktToken is
     address _registry,
     uint256 _xInterval,
     uint256 _xOffset,
+    uint256 _auctionOffset,
     uint256 _auctionDuration,
     uint256 _optOutDuration,
     uint256 _rebalanceDuration,
@@ -177,6 +179,7 @@ contract RebalancingBsktToken is
 
     xInterval = _xInterval;
     xOffset = _xOffset;
+    auctionOffset = _auctionOffset;
     auctionDuration = _auctionDuration;
     optOutDuration = _optOutDuration;
     rebalanceDuration = _rebalanceDuration;
@@ -503,8 +506,6 @@ contract RebalancingBsktToken is
   function getQuantities() external view returns (uint256[] memory) {
     return quantities;
   }
-
-
 
   // === MATH ===
 
