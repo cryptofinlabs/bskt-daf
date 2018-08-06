@@ -11,6 +11,11 @@ const assertRevert = require('./helpers/assertRevert.js');
 const checkEntries = require('./helpers/checkEntries.js');
 
 
+const STATE = Object.freeze({
+  'OPT_OUT': 0,
+  'AUCTIONS_OPEN': 1,
+  'OPEN': 2,
+});
 const NATURAL_UNIT = 10**18;
 const HOUR = 60 * 60;
 const DAY = 24 * HOUR;
@@ -232,7 +237,7 @@ contract('RebalancingBsktToken', function(accounts) {
       state = await setupRebalancingBsktToken(0, 2, [100, 100]);
     });
 
-    it('should bid successfully for first bid', async function() {
+    it.only('should bid successfully for first bid', async function() {
       let creationSize = await state.rebalancingBsktToken.creationSize.call();
       await state.rebalancingBsktToken.issue(creationSize, { from: state.user1 });
 
@@ -260,6 +265,8 @@ contract('RebalancingBsktToken', function(accounts) {
       assert.equal(user1BalanceB, 100 * 10**18, 'user1 state.tokens[1] balance should be unchanged');
       assert.equal(user1BalanceC, 100 * 10**18 - 150, 'user1 state.tokens[1] balance should be 150 less');
 
+      const fundState = await state.rebalancingBsktToken.state.call();
+      assert.equal(fundState, STATE.AUCTIONS_OPEN);
       // assert that bestBid is correct
     });
 
@@ -486,7 +493,7 @@ contract('RebalancingBsktToken', function(accounts) {
     it('should fail if bid tries to take more than it should', async function() {
     });
 
-    it('should commit delta', async function() {
+    it.only('should commit delta', async function() {
       await state.bsktRegistry.set(0, state.feeToken.address, 10**13 - 3141, { from: state.dataManager });
       await state.bsktRegistry.set(1, state.tokens[0].address, 100, { from: state.dataManager });
       await state.bsktRegistry.set(2, state.tokens[1].address, 6000, { from: state.dataManager });
@@ -505,7 +512,8 @@ contract('RebalancingBsktToken', function(accounts) {
       assert.isTrue(dataManagerBalanceDiff[0].eq(state.feeAmount), `balance diff should be ${state.feeAmount}`);
       assert.isTrue(fundBalanceDiff[0].eq(-state.feeAmount),  `balance diff should be ${-state.feeAmount}`);
 
-      // todo check state transitioned
+      const fundState = await state.rebalancingBsktToken.state.call();
+      assert.equal(fundState, STATE.OPT_OUT);
     });
 
     it.only('should fail for commit delta with not enough time left in period', async function() {
@@ -518,7 +526,6 @@ contract('RebalancingBsktToken', function(accounts) {
         assertRevert(e);
       }
     });
-
 
   });
 

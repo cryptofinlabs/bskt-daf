@@ -111,6 +111,7 @@ contract RebalancingBsktToken is
   }
 
   // add error messages
+  // also handles state transitions
   function checkValidInterval(FN fn) internal {
     uint256 xIntervalStart = now.div(xInterval).mul(xInterval).add(xOffset);
 
@@ -129,6 +130,9 @@ contract RebalancingBsktToken is
     if (fn == FN.COMMIT_DELTA) {
       require(state == State.OPEN || state == State.OPT_OUT);
       require(optOutIntervalEnd <= auctionIntervalStart);
+      if (state == State.OPEN) {
+        state = State.OPT_OUT;
+      }
     } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
       require(state == State.OPT_OUT);
       require(optOutIntervalStart <= now && now < optOutIntervalEnd || openIntervalStart <= now);
@@ -142,6 +146,7 @@ contract RebalancingBsktToken is
     } else if (fn == FN.REBALANCE) {
       // require(state == State.AUCTIONS_OPEN);  // What if no bids were made, so the state never transitioned from OPT_OUT to AUCTIONS_OPEN?
       require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd);
+      state = State.OPEN;
     } else {
       revert("Error: Period not recognized.");
     }
@@ -431,13 +436,13 @@ contract RebalancingBsktToken is
 
   // TODO: how to deal with no rebalance called, or something
 
+  // commitDelta can be called multiple times, as long as there's enough time left
   // snapshot the registry
   function commitDelta()
     public
     onlyDuringValidInterval(FN.COMMIT_DELTA)
   {
     (deltaTokens, deltaQuantities) = getRebalanceDeltas();
-    state = State.OPT_OUT;
   }
 
   // naming of target vs all vs registry?
