@@ -27,6 +27,7 @@
     "@digix/tempo": "^0.2.0",
     "bignumber.js": "^7.2.1",
     "cryptofin-solidity": "0.0.4",
+    "eth-gas-reporter": "^0.1.10",
     "ganache-cli": "^6.1.4",
     "openzeppelin-solidity": "^1.10.0",
     "solidity-coverage": "^0.5.5",

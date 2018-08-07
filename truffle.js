@@ -18,7 +18,7 @@ module.exports = {
       host: 'localhost',
       port: 8545,
       network_id: '*',
-      gas: 117999992  // default is 4712388
+      gas: 8000029
     },
     coverage: {
       host: 'localhost',
@@ -26,6 +26,13 @@ module.exports = {
       port: 8555,
       gas: 0xfffffffffff,
       gasPrice: 0x01
+    }
+  },
+  mocha: {
+    reporter: 'eth-gas-reporter',
+    reporterOptions : {
+      currency: 'USD',
+      gasPrice: 10
     }
   }
 };
