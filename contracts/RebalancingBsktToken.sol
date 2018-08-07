@@ -69,18 +69,15 @@ contract RebalancingBsktToken is
   uint256 public optOutDuration;
   uint256 public rebalanceDuration;
 
-
-  // Maybe just decompose
   Bid public bestBid;
 
   // === EVENTS ===
 
   event Issue(address indexed creator, uint256 amount);
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
-  event RebalanceStart(address caller);
-  event RebalanceEnd();
   event Rebalance(address caller);
-  event BidAccepted(address bidder, address[] tokens, int256[] quantities, uint256 totalUnits);  // tense is inconsistent
+  event BidAccepted(address bidder, address[] tokens, int256[] deltas, uint256 totalUnits);
+  event CommitDelta(address[] tokens, int256[] deltas);
 
   // === MODIFIERS ===
 
@@ -90,12 +87,6 @@ contract RebalancingBsktToken is
     }
     _;
   }
-
-  // |,_ commitDelta  |<- auctionIntervalStart  |<- auctionIntervalEnd
-  // |------------------------------------------|--------------------------------|----------- ...
-  // |                |        Auction          |            Rebalance           |    Open    ...
-  // |     Opt-out    |                         |                                |
-  // |------------------------------------------|--------------------------------|----------- ...
 
   // intervals should always satisfy range [)
   modifier onlyDuringValidInterval(FN fn) {
@@ -121,27 +112,29 @@ contract RebalancingBsktToken is
     //uint256 openIntervalEnd = now.div(xInterval).add(1).mul(xInterval).add(xOffset);
 
     if (fn == FN.COMMIT_DELTA) {
-      require(status == Status.OPEN || status == Status.OPT_OUT);
+      require(status == Status.OPEN || status == Status.OPT_OUT, "Error: Invalid status");
       require(optOutIntervalEnd <= auctionIntervalStart);
       if (status == Status.OPEN) {
         status = Status.OPT_OUT;
       }
     } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
-      require(status == Status.OPT_OUT);
-      require(optOutIntervalStart <= now && now < optOutIntervalEnd || openIntervalStart <= now);
+      require(status == Status.OPT_OUT, "Error: Invalid status");
+      require(optOutIntervalStart <= now && now < optOutIntervalEnd || openIntervalStart <= now, "Error: not within opt out period");
     } else if (fn == FN.BID) {
       // The first bid will transition status from opt out to auction
-      require(status == Status.OPT_OUT || status == Status.AUCTIONS_OPEN);
-      require(auctionIntervalStart <= now && now < auctionIntervalEnd);
+      require(status == Status.OPT_OUT || status == Status.AUCTIONS_OPEN, "Error: Invalid status");
+      require(auctionIntervalStart <= now && now < auctionIntervalEnd, "Error; not within opt out period");
       if (status == Status.OPT_OUT && auctionIntervalStart <= now) {
         status = Status.AUCTIONS_OPEN;
       }
     } else if (fn == FN.REBALANCE) {
-      // require(status == Status.AUCTIONS_OPEN);  // What if no bids were made, so the status never transitioned from OPT_OUT to AUCTIONS_OPEN?
-      require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd);
+      // require(status == Status.AUCTIONS_OPEN);
+      // If no bids were made, so the status never transitioned from OPT_OUT to
+      // AUCTIONS_OPEN, then bestBid.bidder is 0, which will trigger a require later
+      require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd, "Error: not within rebalancing period");
       status = Status.OPEN;
     } else {
-      revert("Error: Period not recognized.");
+      revert("Error: Period not recognized");
     }
   }
 
@@ -150,6 +143,7 @@ contract RebalancingBsktToken is
   constructor(
     // should we remove these in favour of just specifying registry and setting to that initially?
     // read from registry here
+    // what to do about fees initially?
     address[] _tokens,
     uint256[] _quantities,
     uint256 _creationSize,
@@ -165,9 +159,11 @@ contract RebalancingBsktToken is
   ) DetailedERC20(_name, _symbol, 18)
     public
   {
-    //require(_tokens.length > 0);  // Will need this to prevent attack - can mint infinite tokens
+    // If the creation unit is empty, users will be able to issue unlimited tokens
+    require(_tokens.length > 0);  // Will need this to prevent attack - can mint infinite tokens
     require(_tokens.length == _quantities.length);
-    //require(optOutDuration.add(auctionDuration).add(rebalanceDuration) <= xInterval);
+    require(_optOutDuration < _auctionOffset);
+    require(_auctionOffset.add(_auctionDuration).add(_rebalanceDuration) <= _xInterval);
     tokens = _tokens;
     quantities = _quantities;
     creationSize = _creationSize;
@@ -251,8 +247,8 @@ contract RebalancingBsktToken is
     }
   }
 
+  // Updates creation unit tokens and quantities
   // List of tokens in bestBid should be the union of tokens in registry and fund
-  // TODO needs to be modified for more than just one creationUnit
   // TODO need to prune tokens with balance 0
   function updateBalances() internal {
     Bid memory _bestBid = bestBid;
@@ -282,7 +278,8 @@ contract RebalancingBsktToken is
     //}
   //}
 
-  // TODO: maybe add some options to not rebalance if bestBid is atrocious (< threshold%)
+  // Settles the best bid and updates creation unit
+  // ADDON: maybe add some options to not rebalance if bestBid is atrocious (< threshold%)
   // Anyone can call this
   function rebalance()
     external
@@ -297,10 +294,12 @@ contract RebalancingBsktToken is
     emit Rebalance(msg.sender);
   }
 
-  // Assumes tokens and deltas are sorted and separated such that all positives are first
-  // Returns true if A is better, false if B is better
-  // If equal, favors A
-  // Should probably rename to something like "isBidBetter"
+  // Compares two bids, returning true if the first bid is better, and breaking ties with the second bid
+  // How it works:
+  // * Maps each bid into an array of percentages representing the percentage of each token filled
+  // * Requires that these percentages are sorted in increasing order, and that all positives are first
+  //   (getRebalanceDeltas takes care of separating +/-, and the bidder must construct the call such that this requirement is satisfied)
+  // * Compares the two percentage arrays by comparing the first element, and iterating
   function compareBids(
     address[] memory tokensA,
     int256[] memory quantitiesA,
@@ -440,6 +439,7 @@ contract RebalancingBsktToken is
     onlyDuringValidInterval(FN.COMMIT_DELTA)
   {
     (deltaTokens, deltaQuantities) = getRebalanceDeltas();
+    emit CommitDelta(deltaTokens, deltaQuantities);
   }
 
   function separatePositiveNegative(address[] memory _tokens, int256[] memory _quantities)

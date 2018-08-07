@@ -178,17 +178,17 @@ contract('RebalancingBsktToken', function(accounts) {
     let state;
 
     beforeEach(async function () {
-      state = await setupRebalancingBsktToken(0, 0, []);
+      state = await setupRebalancingBsktToken(0, 2, [100, 100, 100, 100, 100]);
     });
 
     it('should get rebalance deltas', async function() {
       await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
 
-      await state.bsktRegistry.set(0, state.tokens[0].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(1, state.tokens[1].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(2, state.tokens[2].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(3, state.tokens[3].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(4, state.tokens[4].address, 100, { from: state.dataManager });
+      await state.bsktRegistry.set(0, state.tokens[0].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(1, state.tokens[1].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(2, state.tokens[2].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(3, state.tokens[3].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(4, state.tokens[4].address, 200, { from: state.dataManager });
 
       let [targetTokens, deltas] = await state.rebalancingBsktToken.getRebalanceDeltas.call();
       assert.equal(targetTokens[0], state.tokens[0].address);
@@ -202,11 +202,11 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
     it('should fail when getting rebalance deltas when total supply is 0', async function() {
-      await state.bsktRegistry.set(0, state.tokens[0].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(1, state.tokens[1].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(2, state.tokens[2].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(3, state.tokens[3].address, 100, { from: state.dataManager });
-      await state.bsktRegistry.set(4, state.tokens[4].address, 100, { from: state.dataManager });
+      await state.bsktRegistry.set(0, state.tokens[0].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(1, state.tokens[1].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(2, state.tokens[2].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(3, state.tokens[3].address, 200, { from: state.dataManager });
+      await state.bsktRegistry.set(4, state.tokens[4].address, 200, { from: state.dataManager });
 
       try {
         await state.rebalancingBsktToken.getRebalanceDeltas();
