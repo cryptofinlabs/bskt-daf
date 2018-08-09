@@ -34,4 +34,12 @@ library Math {
     return 2 ** 256 - 1;
   }
 
+  function add(uint256 a, uint256 b) internal pure returns (uint256) {
+    return a.add(b);
+  }
+
+  function isNonZero(uint256 n) internal pure returns (bool) {
+    return n != 0;
+  }
+
 }

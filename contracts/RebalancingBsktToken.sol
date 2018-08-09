@@ -14,7 +14,8 @@ import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol";
 import "./BsktRegistry.sol";
 import "./Escrow.sol";
 import "./IBsktToken.sol";
-//import "./Math.sol";
+import "./impl/BidImpl.sol";
+import "./Math.sol";
 
 
 contract RebalancingBsktToken is
@@ -81,13 +82,6 @@ contract RebalancingBsktToken is
 
   // === MODIFIERS ===
 
-  modifier requireSortedRational256(Rational.Rational256[] memory A) {
-    for (uint256 i = 1; i < A.length; i++) {
-      require(A[i - 1].lte(A[i]));
-    }
-    _;
-  }
-
   // intervals should always satisfy range [)
   modifier onlyDuringValidInterval(FN fn) {
     checkValidInterval(fn);
@@ -128,7 +122,7 @@ contract RebalancingBsktToken is
         status = Status.AUCTIONS_OPEN;
       }
     } else if (fn == FN.REBALANCE) {
-      // require(status == Status.AUCTIONS_OPEN);
+       require(status == Status.AUCTIONS_OPEN);
       // If no bids were made, so the status never transitioned from OPT_OUT to
       // AUCTIONS_OPEN, then bestBid.bidder is 0, which will trigger a require later
       require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd, "Error: not within rebalancing period");
@@ -164,6 +158,9 @@ contract RebalancingBsktToken is
     require(_tokens.length == _quantities.length);
     require(_optOutDuration < _auctionOffset);
     require(_auctionOffset.add(_auctionDuration).add(_rebalanceDuration) <= _xInterval);
+
+    // require not all zero
+
     tokens = _tokens;
     quantities = _quantities;
     creationSize = _creationSize;
@@ -262,8 +259,16 @@ contract RebalancingBsktToken is
     for (i = 0; i < _bestBid.tokens.length; i++) {
       updatedQuantities[i] = updatedQuantities[i].div(_totalUnits);
     }
-    tokens = _bestBid.tokens;
-    quantities = updatedQuantities;
+
+    // Filter out tokens with quantity 0
+    uint256[] memory indexArray = updatedQuantities.argFilter(isNonZero);
+    if (indexArray.length != _bestBid.tokens.length) {
+      tokens = _bestBid.tokens.argGet(indexArray);
+      quantities = updatedQuantities.argGet(indexArray);
+    } else {
+      tokens = _bestBid.tokens;
+      quantities = updatedQuantities;
+    }
   }
 
   //// handles AUM fee
@@ -285,8 +290,10 @@ contract RebalancingBsktToken is
     external
     onlyDuringValidInterval(FN.REBALANCE)
   {
-    Bid memory _bestBid = bestBid;
-    require(_bestBid.bidder != address(0));
+    // commented out for out of gas error 770429428644264
+    // same functionality is being provided by checkValidInterval
+    //Bid memory _bestBid = bestBid;
+    //require(_bestBid.bidder != address(0));
     settleBid();
     updateBalances();
     // set some didRebalance flag
@@ -336,49 +343,13 @@ contract RebalancingBsktToken is
     return compareSortedRational256s(fillProportionA, fillProportionB);
   }
 
-  //function getBidFillProportion(
-    //address[] bidTokens,
-    //int256[] bidQuantities,
-    //address[] deltaTokens,
-    //int256[] deltaQuantities
-  //)
-    //external
-    //pure
-    //returns (Rational.Rational256[] memory)
-  //{
-    //Rational.Rational256[] memory fillProportion = new Rational.Rational256[](deltaTokens.length);
-    //for (uint256 i = 0; i < deltaTokens.length; i++) {
-      //// TODO: consider negative deltas!
-      //if (deltaQuantities[i] > 0) {
-        //require(bidQuantities[i] >= 0);
-        //fillProportion[i] = Rational.Rational256({ n: uint256(bidQuantities[i]), d: uint256(deltaQuantities[i]) });
-       //} else {
-         //continue;  // Entry will be 0
-       //}
-    //}
-  //}
-
-  // Assumes fillProportions are sorted
-  // Returns true if A is better, false if B is better
-  // If equal, favors B
   function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
     internal
-    requireSortedRational256(A)
-    requireSortedRational256(B)
+    pure
     returns (bool)
   {
-    for (uint256 i = 0; i < A.length; i++) {
-      if (A[i].gt(B[i])) {
-        return true;
-      } else if (A[i].lt(B[i])) {
-        return false;
-      } else {
-        continue;
-      }
-    }
-    return false;
+    return BidImpl.compareSortedRational256s(A, B);
   }
-
 
   // Checks that the bid isn't trying to take more funds than it should
   function acceptableBid(address[] _tokens, int256[] _quantities) internal view returns (bool) {
@@ -539,6 +510,10 @@ contract RebalancingBsktToken is
   // TODO: use the one from library once a fix to solidity-coverage linking issue is found
   function MAX_UINT256() internal pure returns (uint256) {
     return 2 ** 256 - 1;
+  }
+
+  function isNonZero(uint256 n) internal pure returns (bool) {
+    return n != 0;
   }
 
 }

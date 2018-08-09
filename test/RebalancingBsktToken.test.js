@@ -415,12 +415,10 @@ contract('RebalancingBsktToken', function(accounts) {
       // Order of tokens gets shuffled a bit
       assert.equal(updatedTokens[0], state.tokens[2].address);
       assert.equal(updatedTokens[1], state.tokens[0].address);
-      assert.equal(updatedTokens[2], state.tokens[1].address);
       // TODO: helper to check arrays
       // helper to check arrays of BigNumber
       assert.equal(updatedQuantities[0].toNumber(), 150, 'rebalancingBsktToken quantities should be correct');
       assert.equal(updatedQuantities[1].toNumber(), 50, 'rebalancingBsktToken quantities should be correct');
-      assert.equal(updatedQuantities[2].toNumber(), 0, 'rebalancingBsktToken quantities should be correct');
 
       const tokenABalance = await state.tokens[0].balanceOf.call(state.rebalancingBsktToken.address);
       const tokenBBalance = await state.tokens[1].balanceOf.call(state.rebalancingBsktToken.address);
