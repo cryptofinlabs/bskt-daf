@@ -76,8 +76,8 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     if (!isIn) {
       return false;
     } else {
-      tokens.sRemoveIndex(index);
-      quantities.sRemoveIndex(index);
+      tokens.sPopCheap(index);
+      quantities.sPopCheap(index);
       return true;
     }
   }
