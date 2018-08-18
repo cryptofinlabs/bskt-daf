@@ -11,6 +11,7 @@ const DEPLOYED_ADDRESSES_PATH = './build/deployed-addresses.json';
 module.exports = (deployer, network, accounts) => {
   if (network == 'development') {
     let bsktRegistry, feeToken, rebalancingBsktToken;
+    let tokenA, tokenB;
     let feeAmount = 10**17;
 
     deployer.then(() => {
@@ -21,9 +22,17 @@ module.exports = (deployer, network, accounts) => {
       return ERC20Token.new();
     }).then(_feeToken => {
       feeToken = _feeToken;
+      return ERC20Token.new();
+    }).then((_tokenA) => {
+      tokenA = _tokenA;
+      return ERC20Token.new();
+    }).then(_tokenB => {
+      tokenB = _tokenB;
       return BsktRegistry.new(accounts[1], feeToken.address, feeAmount);
     }).then(_bsktRegistry => {
       bsktRegistry = _bsktRegistry;
+      return bsktRegistry.batchSet([tokenA.address, tokenB.address], [100000, 200000]);
+    }).then(_bsktRegistry => {
       return RebalancingBsktToken.new(
         [feeToken.address],
         [100],
@@ -40,10 +49,16 @@ module.exports = (deployer, network, accounts) => {
       );
     }).then(_rebalancingBsktToken => {
       rebalancingBsktToken = _rebalancingBsktToken;
+      return feeToken.mint(accounts[0], 100 * 10**18, { from: accounts[0] });
+    }).then(() => {
+      return feeToken.approve(bsktRegistry.address, 100 * 10**18, { from: accounts[0] });
+    }).then(() => {
       let deployedAddresses = {
         'bsktRegistry': bsktRegistry.address,
         'feeToken': feeToken.address,
-        'rebalancingBsktToken': rebalancingBsktToken.address
+        'rebalancingBsktToken': rebalancingBsktToken.address,
+        'tokenA': tokenA.address,
+        'tokenB': tokenB.address
       };
       console.log('deployed addresses:', deployedAddresses);
       jsonfile.writeFileSync(DEPLOYED_ADDRESSES_PATH, deployedAddresses, {spaces: 2});
