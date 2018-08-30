@@ -14,6 +14,7 @@ module.exports = (deployer, network, accounts) => {
     let tokenA, tokenB;
     let feeAmount = 10**17;
 
+    console.log('accounts[0]', accounts[0]);
     deployer.then(() => {
       return deployer.deploy(Math);
     }).then(() => {
@@ -34,8 +35,8 @@ module.exports = (deployer, network, accounts) => {
       return bsktRegistry.batchSet([tokenA.address, tokenB.address], [100000, 200000]);
     }).then(_bsktRegistry => {
       return RebalancingBsktToken.new(
-        [feeToken.address],
-        [100],
+        [feeToken.address, tokenA.address],
+        [10**16, 1.6 * 10**15],
         10**18,
         bsktRegistry.address,
         7 * 24 * 60 * 60,
@@ -49,9 +50,17 @@ module.exports = (deployer, network, accounts) => {
       );
     }).then(_rebalancingBsktToken => {
       rebalancingBsktToken = _rebalancingBsktToken;
-      return feeToken.mint(accounts[0], 100 * 10**18, { from: accounts[0] });
+      return feeToken.approve(rebalancingBsktToken.address, 100 * 10**18, { from: accounts[0] });
+    }).then(() => {
+      return tokenA.approve(rebalancingBsktToken.address, 100 * 10**18, { from: accounts[0] });
     }).then(() => {
       return feeToken.approve(bsktRegistry.address, 100 * 10**18, { from: accounts[0] });
+    }).then(() => {
+      return feeToken.mint(accounts[0], 100 * 10**18, { from: accounts[0] });
+    }).then(() => {
+      return tokenA.mint(accounts[0], 100 * 10**18, { from: accounts[0] });
+    }).then(() => {
+      return rebalancingBsktToken.issue(10 * 10**18, { from: accounts[0] });
     }).then(() => {
       let deployedAddresses = {
         'bsktRegistry': bsktRegistry.address,
