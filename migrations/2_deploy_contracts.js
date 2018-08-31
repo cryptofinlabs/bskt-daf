@@ -12,7 +12,7 @@ module.exports = (deployer, network, accounts) => {
   if (network == 'development') {
     let bsktRegistry, feeToken, rebalancingBsktToken;
     let tokenA, tokenB;
-    let feeAmount = 10**17;
+    let feeAmount = 10**13;
 
     console.log('accounts[0]', accounts[0]);
     deployer.then(() => {
@@ -39,12 +39,18 @@ module.exports = (deployer, network, accounts) => {
         [10**16, 1.6 * 10**15],
         10**18,
         bsktRegistry.address,
-        7 * 24 * 60 * 60,
+        5 * 60,
         0,
-        24 * 60 * 60,
-        3 * 24 * 60 * 60,
-        12 * 60 * 60,
-        24 * 60 * 60,
+        30,
+        30,
+        15,
+        30,
+        //7 * 24 * 60 * 60,
+        //0,
+        //24 * 60 * 60,
+        //3 * 24 * 60 * 60,
+        //12 * 60 * 60,
+        //24 * 60 * 60,
         'RebalancingBsktToken',
         'RBSKT'
       );
