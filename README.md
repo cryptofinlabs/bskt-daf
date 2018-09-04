@@ -1,75 +1,53 @@
-
 [![CircleCI](https://circleci.com/gh/cryptofinlabs/bskt-daf.svg?style=svg&circle-token=7995dda412f01e937103e630b5e8a021d5e29ba5)](https://circleci.com/gh/cryptofinlabs/bskt-daf)
 
-## Development
+# The Decentralized Autonomous Fund
 
-    npm install
-    npm run test
+![Bskt DAF Logo](./bskt-daf-logo.svg)
 
-## Notes
-- Since Escrow ("proxy") requires approval anyway, maybe approval for issue/redeem should be there too.
-- No fee for getTokens
-
-## Documentation
-### Auction
-When bidding, the calls must be carefully constructed to pass in tokens in the required order. It must match the order specified in `getRebalanceDeltas()`.
-
-### Tests
-need to write assert.equal for bignumbers
-use new web3 for truffle
-figure out why sometimes returns number, sometimes bignumber figure out why can't use bignumber as input sometimes
-
-#### Coverage
-Must use modified UIntArrayUtils because of this: https://github.com/sc-forks/solidity-coverage/issues/263
-linking issues with Math for RebalancingBsktToken and TestMath. Workaround for now is to move Math functions into contract, and not test TestMath
-
-### Naming
-- UIntArrayUtils implied 256? Be consistent with Rational as well.
-- RebalancingBsktToken -> FundToken? just BsktToken?
-
-### Design
-Fees - beneficiary?
-Vault?
-
-logging
-
-ensure that duplicate tokens in BsktRegistry won't cause attack vectors
+tl;dr A trustless, self-rebalancing fund that holds one or more Ethereum ERC20 tokens
 
 
-Map with external math library didn't work
+## Overview
+
+The **Decentralized Autonomous Fund** (DAF) allows anyone to hold a cryptocurrency token that is
+composed of underlying cryptocurrency tokens.
+
+The key benefits of the DAF are that it:
+
+- Represents many ERC20 tokens with a single ERC20 token
+- Allows third-party rebalacing, with easy entry and exit from the fund
+- Connects to existing centralized and decentralized ERC20 exchanges
+
+## How it Works
+
+The DAF is divided into a *portfolio data component* and a *fund component*:
+
+![Bskt DAF overview](./images/bskt-overview-figure.png)
+
+The *portfolio data component* allows one or more data managers to regularly select one or more ERC20 tokens
+and their balances. In exchange for this oracle service, data managers receive fees to read the
+oracle data on chain. Thie data manager can also be easily replaced by a community voting mechanism,
+such as a token curated registry (TCR).
+
+The *fund component* allows anyone to create/redeem fund tokens that reflect the portfolio data component. To
+create means to exchange underlying tokens for the fund token. To redeem means to exchange fund tokens
+for the underlying.
+
+When changes are made to the composition in the *portfolio data component*, the *fund component* will wait
+for a period of time ("opt out window") before beginning an auction to rebalance to the new
+composition. During the opt out window, anyone holding fund tokens who disagrees can redeem to exit
+the fund — or sell the fund tokens on exchanges.
+
+To make compliance easier, we also provide modules for opting in before rebalancing.
+
+## To Use
+
+### Deployment
 
 
-Re: Extensible to support different auction mechanisms
-English auction vs Dutch auction are pretty different, especially in terms of implementation.
-But consider ways of making it generalizable
+### Testing
+```
+npm install
+npm run test
+```
 
-As long as the BsktToken has a clearly defined interface that's always backwards-compatible, should be fine.
-Even if it isn't, `bskt.js` and a BsktToken interface shim contract can be maintained
-
-ERC20 + issue, redeem
-
-tense for event names
-
-what happens if you rebalance when no tokens have been issued?
-  It should fail because of div by 0 (totalUnits) when updating quantities
-
-## Fees
-currently fund pays every time someone bids
-how to restructure so the fund pays?
-maybe take a snapshot of the registry internally, costing money
-all bidding stuff has to happen after this
-
-gonna use a state machine to track everything
-
-
-add proxy so only one contract has to be approved
-
-## Bugs
-- If tokens are being sold, but are scattered throughout, it's impossible to get a sorted list
-  - May have to sort on chain?
-  - The current implementation has been modified to treat sales as 100% so it can still work with perfect bids
-    - commented out requireSorted, so it'll just compare left to right based on whatever order the union gives
-      - any overall better bid should still beat lesser bids
-
-## Testing
-May have to restart ganache-cli every time to reset timestamp
