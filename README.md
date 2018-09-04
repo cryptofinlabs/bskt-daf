@@ -1,6 +1,6 @@
 [![CircleCI](https://circleci.com/gh/cryptofinlabs/bskt-daf.svg?style=svg&circle-token=7995dda412f01e937103e630b5e8a021d5e29ba5)](https://circleci.com/gh/cryptofinlabs/bskt-daf)
 
-<img src="" alt="Bskt DAF Logo" width="150px">
+<img src="./bskt-daf-logo.svg" alt="Bskt DAF Logo" width="150px">
 
 # The Decentralized Autonomous Fund
 
