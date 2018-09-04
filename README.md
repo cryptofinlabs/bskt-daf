@@ -38,7 +38,7 @@ will wait for a period of time ("opt out window") before beginning an auction to
 new composition. During the opt out window, anyone holding fund tokens who disagrees can redeem to
 exit the fund — or sell the fund tokens on exchanges.
 
-To make compliance easier, we also provide modules for opting in before rebalancing.
+For more details, see our [whitepaper](./Bskt Decentralized Autonomous Fund.pdf)
 
 ## Fund Lifecycle
 
