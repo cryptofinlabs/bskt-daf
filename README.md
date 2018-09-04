@@ -1,6 +1,6 @@
 [![CircleCI](https://circleci.com/gh/cryptofinlabs/bskt-daf.svg?style=svg&circle-token=7995dda412f01e937103e630b5e8a021d5e29ba5)](https://circleci.com/gh/cryptofinlabs/bskt-daf)
 
-<img src="" alt="Bskt DAF Logo" style="max-width: 150px;">
+<img src="" alt="Bskt DAF Logo" width="150px">
 
 # The Decentralized Autonomous Fund
 
@@ -22,7 +22,7 @@ The key benefits of the DAF are that it:
 
 The DAF is divided into a *portfolio data component* and a *fund component*:
 
-<img src="./images/bskt-overview-figure.png" alt="Bskt DAF overview" style="max-width: 500px;">
+<img src="./images/bskt-overview-figure.png" alt="Bskt DAF overview" width="500px">
 
 The *portfolio data component* allows one or more data managers to regularly select one or more ERC20 tokens
 and their balances. In exchange for this oracle service, data managers receive fees to read the
