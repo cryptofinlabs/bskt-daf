@@ -314,41 +314,17 @@ contract RebalancingBsktToken is
     int256[] memory quantitiesB
   )
   public
+  view
   returns (bool)
   {
-    require(tokensA.length == quantitiesA.length);
-    require(tokensA.length == tokensB.length);
-    require(tokensA.length == quantitiesB.length);
-
-    address[] memory _deltaTokens = deltaTokens;
-    int256[] memory _deltaQuantities = deltaQuantities;
-    Rational.Rational256[] memory fillProportionA = new Rational.Rational256[](_deltaTokens.length);
-    Rational.Rational256[] memory fillProportionB = new Rational.Rational256[](_deltaTokens.length);
-    for (uint256 i = 0; i < _deltaTokens.length; i++) {
-      if (_deltaQuantities[i] > 0) {
-        require(quantitiesA[i] >= 0);
-        require(quantitiesB[i] >= 0);
-        fillProportionA[i] = Rational.Rational256({ n: uint256(quantitiesA[i]), d: uint256(_deltaQuantities[i]) });
-        fillProportionB[i] = Rational.Rational256({ n: uint256(quantitiesB[i]), d: uint256(_deltaQuantities[i]) });
-      } else {
-        // If tokens are being sold (negative delta), entry is 100
-        // It's assumed bidders act in their own economic interest, so they
-        // wouldn't leave any tokens on the table
-        // Also anything with deltaQuantity 0 is automatically 100%
-        fillProportionA[i] = Rational.Rational256({ n: 100, d: 1 });
-        fillProportionB[i] = Rational.Rational256({ n: 100, d: 1 });
-        continue;
-      }
-    }
-    return compareSortedRational256s(fillProportionA, fillProportionB);
-  }
-
-  function compareSortedRational256s(Rational.Rational256[] memory A, Rational.Rational256[] memory B)
-    internal
-    pure
-    returns (bool)
-  {
-    return BidImpl.compareSortedRational256s(A, B);
+    return BidImpl.compareBids(
+      tokensA,
+      quantitiesA,
+      tokensB,
+      quantitiesB,
+      deltaTokens,
+      deltaQuantities
+    );
   }
 
   // Checks that the bid isn't trying to take more funds than it should
