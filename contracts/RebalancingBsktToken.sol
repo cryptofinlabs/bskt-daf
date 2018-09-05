@@ -58,6 +58,7 @@ contract RebalancingBsktToken is
   // These are set by commitDelta
   address[] public deltaTokens;
   int256[] public deltaQuantities;
+  address[] public tokensToSkip;
 
   BsktRegistry public registry;
   Escrow public escrow;
@@ -194,7 +195,12 @@ contract RebalancingBsktToken is
 
     uint256 tokensLength = tokens.length;
     for (uint256 i = 0; i < tokensLength; i++) {
-      ERC20 erc20 = ERC20(tokens[i]);
+      address tokenAddress = tokens[i];
+      ERC20 erc20 = ERC20(tokenAddress);
+      bool isIn = tokensToSkip.contains(tokenAddress);
+      if (isIn) {
+        continue;
+      }
       uint256 amountTokens = amount.div(_creationSize).mul(quantities[i]);
       require(erc20.transferFrom(msg.sender, address(this), amountTokens));
     }
@@ -203,7 +209,7 @@ contract RebalancingBsktToken is
     emit Issue(msg.sender, amount);
   }
 
-  function redeem(uint256 amount, address[] tokensToSkip)
+  function redeem(uint256 amount, address[] tokensToSkipOverride)
     external
     onlyDuringValidInterval(FN.REDEEM)
   {
@@ -213,7 +219,14 @@ contract RebalancingBsktToken is
     uint256 _creationSize = creationSize;
     require((amount % _creationSize) == 0);
     uint256 tokensLength = tokens.length;
-    require(tokensToSkip.length <= tokensLength);
+    require(tokensToSkipOverride.length <= tokensLength);
+
+    address[] memory _tokensToSkip;
+    if (tokensToSkipOverride.length != 0) {
+      _tokensToSkip = tokensToSkipOverride;
+    } else {
+      _tokensToSkip = tokensToSkip;
+    }
 
     // Burn before to prevent re-entrancy
     burn(msg.sender, amount);
@@ -221,14 +234,14 @@ contract RebalancingBsktToken is
     for (uint256 i = 0; i < tokensLength; i++) {
       address tokenAddress = tokens[i];
       ERC20 erc20 = ERC20(tokenAddress);
-      bool isIn = tokensToSkip.contains(tokenAddress);
+      bool isIn = _tokensToSkip.contains(tokenAddress);
       if (isIn) {
         continue;
       }
       uint256 amountTokens = amount.div(_creationSize).mul(quantities[i]);
       require(erc20.transfer(msg.sender, amountTokens));
     }
-    emit Redeem(msg.sender, amount, tokensToSkip);
+    emit Redeem(msg.sender, amount, _tokensToSkip);
   }
 
   // Transfers tokens from escrow to fund and fund to bidder
@@ -386,6 +399,7 @@ contract RebalancingBsktToken is
     onlyDuringValidInterval(FN.COMMIT_DELTA)
   {
     (deltaTokens, deltaQuantities) = getRebalanceDeltas();
+    tokensToSkip = registry.getFrozenTokens();
     emit CommitDelta(deltaTokens, deltaQuantities);
   }
 
