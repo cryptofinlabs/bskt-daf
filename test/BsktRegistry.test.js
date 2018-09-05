@@ -5,6 +5,7 @@ const _ = require('underscore');
 const BigNumber = require('bignumber.js');
 
 const assertRevert = require('./helpers/assertRevert.js');
+const assertArrayEqual = require('./helpers/assertArrayEqual.js');
 const checkEntries = require('./helpers/checkEntries.js');
 
 
@@ -90,6 +91,32 @@ contract('BsktRegistry', function(accounts) {
         await feeToken.mint(bsktRegistry.address, 10**18, { from: owner });
         await bsktRegistry.withdrawTokens(feeToken.address, 100**18, { from: dataManager });
       } catch(e) {
+        assertRevert(e);
+      }
+    });
+
+    it.only('should set frozen', async function() {
+      const targetTokens = [tokenA.address, tokenC.address, tokenB.address];
+      const targetQuantities = [314, 159, 265];
+      await bsktRegistry.batchSet(targetTokens, targetQuantities, { from: dataManager });
+
+      const targetFrozenTokens = [
+        '0x0000000000000000000000000000000000000000',
+        '0x0000000000000000000000000000000000000002'
+      ];
+      await bsktRegistry.setFrozen(targetFrozenTokens, { from: dataManager });
+      const frozenTokens = await bsktRegistry.getFrozenTokens();
+      assertArrayEqual(targetFrozenTokens, frozenTokens);
+    });
+
+    it.only('should set frozen should fail with length greater than number of tokens', async function() {
+      const targetFrozenTokens = [
+        '0x0000000000000000000000000000000000000000',
+        '0x0000000000000000000000000000000000000002'
+      ];
+      try {
+        await bsktRegistry.setFrozen(targetFrozenTokens, { from: dataManager });
+      } catch (e) {
         assertRevert(e);
       }
     });
