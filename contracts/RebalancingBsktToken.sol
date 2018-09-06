@@ -7,9 +7,9 @@ import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "cryptofin-solidity/contracts/rationals/Rational.sol";
 import "cryptofin-solidity/contracts/rationals/RationalMath.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/DetailedERC20.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol"; 
+import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol"; 
 
 import "./BsktRegistry.sol";
 import "./Escrow.sol";
@@ -19,8 +19,8 @@ import "./Math.sol";
 
 
 contract RebalancingBsktToken is
-  DetailedERC20,
-  StandardToken
+  ERC20Detailed,
+  ERC20
 {
 
   using AddressArrayUtils for address[];
@@ -151,7 +151,7 @@ contract RebalancingBsktToken is
     uint256 _rebalanceDuration,
     string _name,
     string _symbol
-  ) DetailedERC20(_name, _symbol, 18)
+  ) ERC20Detailed (_name, _symbol, 18)
     public
   {
     // If the creation unit is empty, users will be able to issue unlimited tokens
@@ -176,7 +176,7 @@ contract RebalancingBsktToken is
     optOutDuration = _optOutDuration;
     rebalanceDuration = _rebalanceDuration;
 
-    ERC20 feeToken = registry.feeToken();
+    IERC20 feeToken = registry.feeToken();
     feeToken.approve(registry, MAX_UINT256());
 
     status = Status.OPT_OUT;
@@ -189,14 +189,14 @@ contract RebalancingBsktToken is
     onlyDuringValidInterval(FN.ISSUE)
   {
     require(amount > 0);
-    require((totalSupply_ + amount) > totalSupply_);
+    require((totalSupply() + amount) > totalSupply());
     uint256 _creationSize = creationSize;
     require((amount % _creationSize) == 0);
 
     uint256 tokensLength = tokens.length;
     for (uint256 i = 0; i < tokensLength; i++) {
       address tokenAddress = tokens[i];
-      ERC20 erc20 = ERC20(tokenAddress);
+      IERC20 erc20 = IERC20(tokenAddress);
       bool isIn = tokensToSkip.contains(tokenAddress);
       if (isIn) {
         continue;
@@ -205,7 +205,7 @@ contract RebalancingBsktToken is
       require(erc20.transferFrom(msg.sender, address(this), amountTokens));
     }
 
-    mint(msg.sender, amount);
+    _mint(msg.sender, amount);
     emit Issue(msg.sender, amount);
   }
 
@@ -214,8 +214,8 @@ contract RebalancingBsktToken is
     onlyDuringValidInterval(FN.REDEEM)
   {
     require(amount > 0);
-    require(amount <= totalSupply_);
-    require(amount <= balances[msg.sender]);
+    require(amount <= totalSupply());
+    require(amount <= balanceOf(msg.sender));
     uint256 _creationSize = creationSize;
     require((amount % _creationSize) == 0);
     uint256 tokensLength = tokens.length;
@@ -229,11 +229,11 @@ contract RebalancingBsktToken is
     }
 
     // Burn before to prevent re-entrancy
-    burn(msg.sender, amount);
+    _burn(msg.sender, amount);
 
     for (uint256 i = 0; i < tokensLength; i++) {
       address tokenAddress = tokens[i];
-      ERC20 erc20 = ERC20(tokenAddress);
+      IERC20 erc20 = IERC20(tokenAddress);
       bool isIn = _tokensToSkip.contains(tokenAddress);
       if (isIn) {
         continue;
@@ -252,7 +252,7 @@ contract RebalancingBsktToken is
     for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
       if (_bestBid.quantities[i] < 0) {
         uint256 amount = uint256(-_bestBid.quantities[i]).mul(_totalUnits);
-        ERC20(_bestBid.tokens[i]).transfer(bestBid.bidder, amount);
+        IERC20(_bestBid.tokens[i]).transfer(bestBid.bidder, amount);
       }
     }
   }
@@ -264,7 +264,7 @@ contract RebalancingBsktToken is
     Bid memory _bestBid = bestBid;
     uint256[] memory updatedQuantities = new uint256[](_bestBid.tokens.length);
     for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
-      ERC20 erc20 = ERC20(_bestBid.tokens[i]);
+      IERC20 erc20 = IERC20(_bestBid.tokens[i]);
       // Must query balance to deal with airdrops
       updatedQuantities[i] = erc20.balanceOf(address(this));
     }
@@ -290,7 +290,7 @@ contract RebalancingBsktToken is
     //uint256 length = tokens.length;
     //for (uint256 i = 0; i < length; i++) {
       //uint256 amount = quantities[i] * rebalancingFeePct;  // use Rational
-      //ERC20(tokens[i]).transfer(registry.beneficiary(), amount);
+      //IERC20(tokens[i]).transfer(registry.beneficiary(), amount);
       //// update balances again
       //quantities[i] = quantities[i].sub(amount);
     //}
@@ -439,7 +439,7 @@ contract RebalancingBsktToken is
     uint256 length = targetTokens.length;
     int256[] memory deltas = new int256[](length);
     for (uint256 i = 0; i < length; i++) {
-      ERC20 erc20 = ERC20(targetTokens[i]);
+      IERC20 erc20 = IERC20(targetTokens[i]);
       // assert that quantity is >= quantity recorded for that token
       uint256 quantity = erc20.balanceOf(address(this)).div(_totalUnits);
       // TODO: ensure no overflow
@@ -454,29 +454,7 @@ contract RebalancingBsktToken is
   }
 
   function totalUnits() public view returns (uint256) {
-    return totalSupply_.div(creationSize);
-  }
-
-  // @dev Mints new tokens
-  // @param to Address to mint to
-  // @param amount Amount to mint
-  // @return isOk Whether the operation was successful
-  function mint(address to, uint256 amount) internal returns (bool) {
-    totalSupply_ = totalSupply_.add(amount);
-    balances[to] = balances[to].add(amount);
-    emit Transfer(address(0), to, amount);
-    return true;
-  }
-
-  // @dev Burns tokens
-  // @param from Address to burn from
-  // @param amount Amount to burn
-  // @return isOk Whether the operation was successful
-  function burn(address from, uint256 amount) internal returns (bool) {
-    totalSupply_ = totalSupply_.sub(amount);
-    balances[from] = balances[from].sub(amount);
-    emit Transfer(from, address(0), amount);
-    return true;
+    return totalSupply().div(creationSize);
   }
 
   function getTokens() external view returns (address[] memory) {

@@ -6,7 +6,7 @@ import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 
 import "./IBsktRegistry.sol";
 
@@ -18,7 +18,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   using UIntArrayUtils for uint256[];
 
   address public beneficiary;
-  ERC20 public feeToken;
+  IERC20 public feeToken;
   uint256 public readFeeAmount;
 
   // Internal to enforce fees
@@ -49,7 +49,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   constructor(address _beneficiary, address _feeToken, uint256 _amount) public {
     beneficiary = _beneficiary;
-    feeToken = ERC20(_feeToken);
+    feeToken = IERC20(_feeToken);
     readFeeAmount = _amount;
   }
 
@@ -144,7 +144,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     external
     onlyOwner
   {
-    require(ERC20(_token).transfer(owner, _amount));
+    require(IERC20(_token).transfer(owner(), _amount));
   }
 
 }
