@@ -24,7 +24,6 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
   // Internal to enforce fees
   address[] internal tokens;
   uint256[] internal quantities;
-  address[] internal frozenTokens;
 
   // === EVENTS ===
 
@@ -119,23 +118,10 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     return quantities;
   }
 
-  // May have duplicates, but this doesn't enable any attack vectors
-  function setFrozen(address[] _frozenTokens)
-    public
-    onlyOwner
-  {
-    require(_frozenTokens.length <= tokens.length);
-    frozenTokens = _frozenTokens;
-  }
-
   // === VIEW FUNCTIONS ===
 
   function getTokens() public view returns (address[] memory) {
     return tokens;
-  }
-
-  function getFrozenTokens() public view returns (address[] memory) {
-    return frozenTokens;
   }
 
   // === ONLY OWNER ===
