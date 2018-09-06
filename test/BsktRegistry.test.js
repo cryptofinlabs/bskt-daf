@@ -95,7 +95,7 @@ contract('BsktRegistry', function(accounts) {
       }
     });
 
-    it.only('should set frozen', async function() {
+    it('should set frozen', async function() {
       const targetTokens = [tokenA.address, tokenC.address, tokenB.address];
       const targetQuantities = [314, 159, 265];
       await bsktRegistry.batchSet(targetTokens, targetQuantities, { from: dataManager });
@@ -109,7 +109,7 @@ contract('BsktRegistry', function(accounts) {
       assertArrayEqual(targetFrozenTokens, frozenTokens);
     });
 
-    it.only('should set frozen should fail with length greater than number of tokens', async function() {
+    it('should set frozen should fail with length greater than number of tokens', async function() {
       const targetFrozenTokens = [
         '0x0000000000000000000000000000000000000000',
         '0x0000000000000000000000000000000000000002'

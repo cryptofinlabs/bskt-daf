@@ -24,7 +24,7 @@
   "homepage": "https://github.com/cryptofinlabs/bskt-daf#readme",
   "dependencies": {
     "cryptofin-solidity": "0.0.4",
-    "openzeppelin-solidity": "^1.10.0"
+    "openzeppelin-solidity": "git+ssh://git@github.com/OpenZeppelin/openzeppelin-solidity.git"
   },
   "devDependencies": {
     "@digix/tempo": "^0.2.0",
