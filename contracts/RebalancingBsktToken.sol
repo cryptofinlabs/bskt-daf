@@ -5,11 +5,12 @@ pragma solidity 0.4.24;
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "cryptofin-solidity/contracts/rationals/Rational.sol";
+import "cryptofin-solidity/contracts/token-utils/ERC20TokenUtils.sol";
 import "cryptofin-solidity/contracts/rationals/RationalMath.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol"; 
+import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
 import "./BsktRegistry.sol";
 import "./Escrow.sol";
@@ -222,6 +223,7 @@ contract RebalancingBsktToken is
     require(tokensToSkipOverride.length <= tokensLength);
 
     address[] memory _tokensToSkip;
+    // Use override if it's non-empty
     if (tokensToSkipOverride.length != 0) {
       _tokensToSkip = tokensToSkipOverride;
     } else {
@@ -340,22 +342,6 @@ contract RebalancingBsktToken is
     );
   }
 
-  // Checks that the bid isn't trying to take more funds than it should
-  function acceptableBid(address[] _tokens, int256[] _quantities) internal view returns (bool) {
-    // todo; use the stored ones instead
-    address[] memory _deltaTokens = deltaTokens;
-    int256[] memory _deltaQuantities = deltaQuantities;
-    for (uint256 i = 0; i < _deltaTokens.length; i++) {
-      if (_tokens[i] != _deltaTokens[i]) {
-        return false;
-      }
-      if (_deltaQuantities[i] < 0 && _quantities[i] < _deltaQuantities[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   function bid(address[] _tokens, int256[] _quantities)
     external
     onlyDuringValidInterval(FN.BID)
@@ -363,7 +349,7 @@ contract RebalancingBsktToken is
     Bid memory _bestBid = bestBid;
     // First bid
     if (_bestBid.bidder == address(0)) {
-      require(acceptableBid(_tokens, _quantities));
+      require(BidImpl.acceptableBid(_tokens, _quantities, deltaTokens, deltaQuantities));
       bestBid = Bid({
         bidder: msg.sender,
         tokens: _tokens,
@@ -399,54 +385,27 @@ contract RebalancingBsktToken is
     onlyDuringValidInterval(FN.COMMIT_DELTA)
   {
     (deltaTokens, deltaQuantities) = getRebalanceDeltas();
-    tokensToSkip = registry.getFrozenTokens();
     emit CommitDelta(deltaTokens, deltaQuantities);
   }
 
-  function separatePositiveNegative(address[] memory _tokens, int256[] memory _quantities)
-   internal
-   returns (address[] memory, int256[] memory)
-  {
-    address[] memory _separatedTokens = new address[](_tokens.length);
-    int256[] memory _separatedQuantities = new int256[](_tokens.length);
-    uint256 startPointer = 0;
-    uint256 endPointer = _tokens.length - 1;
-    for (uint256 i = 0; i < _tokens.length; i++) {
-      if (_quantities[i] > 0) {
-        _separatedTokens[startPointer] = _tokens[i];
-        _separatedQuantities[startPointer] = _quantities[i];
-        startPointer++;
-      } else {
-        _separatedTokens[endPointer] = _tokens[i];
-        _separatedQuantities[endPointer] = _quantities[i];
-        endPointer = endPointer.sub(1);
-      }
-    }
-    return (_separatedTokens, _separatedQuantities);
+  function getRebalanceDeltas() public view returns (address[] memory, int256[] memory) {
+    return BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
   }
 
-  // naming of target vs all vs registry?
-  // TODO: handle invalid data
-  // deltas required. + means this contract needs to buy, - means sell
-  // costs fees for the fund
-  function getRebalanceDeltas() public returns (address[] memory, int256[] memory) {
-    uint256 _totalUnits = totalUnits();
-    require(_totalUnits > 0);
-
-    address[] memory registryTokens = registry.getTokens();
-    address[] memory targetTokens = registryTokens.union(tokens);
-    uint256[] memory targetQuantities = registry.getQuantities(targetTokens);
-    uint256 length = targetTokens.length;
-    int256[] memory deltas = new int256[](length);
-    for (uint256 i = 0; i < length; i++) {
-      IERC20 erc20 = IERC20(targetTokens[i]);
-      // assert that quantity is >= quantity recorded for that token
-      uint256 quantity = erc20.balanceOf(address(this)).div(_totalUnits);
-      // TODO: ensure no overflow
-      // TODO: add safemath
-      deltas[i] = int256(targetQuantities[i]) - (int256(quantity));
+  function reportFrozenToken(address token) public {
+    (uint256 index, bool isIn) = tokensToSkip.indexOf(token);
+    if (ERC20TokenUtils.checkFrozen(token)) {
+      // Limit tracking frozen tokens to the creation unit to prevent spam
+      bool isInCreationUnit = tokens.contains(token);
+      require(isInCreationUnit);
+      if (!isIn) {
+        tokensToSkip.push(token);
+      }
+    } else {
+      if (isIn) {
+        tokensToSkip.sPopCheap(index);
+      }
     }
-    return separatePositiveNegative(targetTokens, deltas);
   }
 
   function creationUnit() public view returns (address[] memory, uint256[] memory) {

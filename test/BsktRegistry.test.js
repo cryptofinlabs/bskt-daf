@@ -95,32 +95,6 @@ contract('BsktRegistry', function(accounts) {
       }
     });
 
-    it('should set frozen', async function() {
-      const targetTokens = [tokenA.address, tokenC.address, tokenB.address];
-      const targetQuantities = [314, 159, 265];
-      await bsktRegistry.batchSet(targetTokens, targetQuantities, { from: dataManager });
-
-      const targetFrozenTokens = [
-        '0x0000000000000000000000000000000000000000',
-        '0x0000000000000000000000000000000000000002'
-      ];
-      await bsktRegistry.setFrozen(targetFrozenTokens, { from: dataManager });
-      const frozenTokens = await bsktRegistry.getFrozenTokens();
-      assertArrayEqual(targetFrozenTokens, frozenTokens);
-    });
-
-    it('should set frozen should fail with length greater than number of tokens', async function() {
-      const targetFrozenTokens = [
-        '0x0000000000000000000000000000000000000000',
-        '0x0000000000000000000000000000000000000002'
-      ];
-      try {
-        await bsktRegistry.setFrozen(targetFrozenTokens, { from: dataManager });
-      } catch (e) {
-        assertRevert(e);
-      }
-    });
-
   });
 
   context('with populated registry and zero fees', function() {
