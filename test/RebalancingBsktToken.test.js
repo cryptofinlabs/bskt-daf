@@ -7,6 +7,8 @@ const BigNumber = require('bignumber.js');
 const _ = require('underscore');
 const tempo = require('@digix/tempo')(web3);
 
+const assertArrayEqual = require('./helpers/assertArrayEqual.js');
+const assertBNEqual = require('./helpers/assertBNEqual.js');
 const assertRevert = require('./helpers/assertRevert.js');
 const checkEntries = require('./helpers/checkEntries.js');
 
@@ -31,6 +33,7 @@ async function queryBalances(account, tokens) {
   );
 }
 
+// When using this to verify diffs, keep in mind that a decreasing token balance will be a negative value
 function computeBalancesDiff(balancesStart, balancesEnd) {
   return _.map(balancesEnd, (balanceEnd, i) => {
     return balanceEnd.minus(balancesStart[i]);
@@ -128,8 +131,9 @@ contract('RebalancingBsktToken', function(accounts) {
 
     state.owner = accounts[0];
     state.dataManager = accounts[1];
-    state.user1 = accounts[2];
-    state.bidder1 = accounts[3];
+    state.user1 = accounts[2];  // user1 has tokens and approvals set up
+    state.user2 = accounts[3];  // user2 has no tokens and no approvals set up
+    state.bidder1 = accounts[4];  // bidder1 has tokens and approvals set up
 
     await waitForStartNextPeriod(state.lifecycle);
 
@@ -649,8 +653,7 @@ contract('RebalancingBsktToken', function(accounts) {
       assert.equal(fundState, STATE.OPT_OUT);
     });
 
-    it('should fail for commit delta with not enough time left in period', async function() {
-      await moveToPeriod('OPT_OUT', state.lifecycle);
+    it('should fail for commit delta with not enough time left in period', async function() { await moveToPeriod('OPT_OUT', state.lifecycle);
       await tempo.wait(18 * 60 * 60);  // Move to time with not enough opt out duration left until auction
       try {
         await state.rebalancingBsktToken.commitDelta();
@@ -680,6 +683,121 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.rebalancingBsktToken.issue(10**21, { from: state.user1 });
       const totalUnits = await state.rebalancingBsktToken.totalUnits.call();
       assert.equal(totalUnits.toNumber(), 1000);
+    });
+
+  });
+
+  context('freeze reporting', function() {
+    let state;
+
+    beforeEach(async function () {
+      state = await setupRebalancingBsktToken(0, 2, [100, 100]);
+      await state.tokens[0].mint(state.user2, 10**18, { from: state.owner });
+      await state.tokens[0].approve(state.rebalancingBsktToken.address, 10**18, { from: state.user2 });
+      await state.tokens[1].mint(state.user2, 10**18, { from: state.owner });
+      await state.tokens[1].approve(state.rebalancingBsktToken.address, 10**18, { from: state.user2 });
+    });
+
+    it('should report frozen token correctly', async function() {
+      await state.tokens[0].pause({ from: state.owner });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      assertArrayEqual(tokensToSkip, [state.tokens[0].address], 'reported frozen tokens should match');
+    });
+
+    it('should report multiple frozen token correctly', async function() {
+      await state.tokens[0].pause({ from: state.owner });
+      await state.tokens[1].pause({ from: state.owner });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[1].address, { from: state.user2 });
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      assertArrayEqual(tokensToSkip, [state.tokens[0].address, state.tokens[1].address], 'reported frozen tokens should match');
+    });
+
+    it('should report frozen, then unfrozen token correctly', async function() {
+      await state.tokens[0].pause({ from: state.owner });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
+      await state.tokens[0].unpause({ from: state.owner });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      assertArrayEqual(tokensToSkip, [], 'reported frozen tokens should be empty');
+    });
+
+    it('should report frozen, then unfrozen token correctly after it has been removed from creation unit', async function() {
+    });
+
+    it('should not add falsely reported token to tokensToSkip', async function() {
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      assertArrayEqual(tokensToSkip, [], 'reported frozen tokens should be empty');
+    });
+
+    it('should fail for reporting frozen token not in creation unit', async function() {
+      try {
+        await state.tokens[3].pause({ from: state.owner });
+        await state.rebalancingBsktToken.reportFrozenToken(state.tokens[3].address, { from: state.user2 });
+      } catch (e) {
+        assertRevert(e);
+      }
+    });
+
+    it('should fail if user balance is insufficient', async function() {
+      try {
+        await state.tokens[0].approve(state.rebalancingBsktToken.address, 10**18, { from: state.user2 });
+        await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
+      } catch (e) {
+        assertRevert(e);
+      }
+    });
+
+    it('should fail if approval amount is insufficient', async function() {
+      try {
+        await state.tokens[2].mint(state.user2, 10**18, { from: state.owner });
+        await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
+      } catch (e) {
+        assertRevert(e);
+      }
+    });
+
+    it('should skip frozen tokens for issue', async function() {
+      await state.tokens[0].pause({ from: state.owner });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user1 });
+
+      const user1BalancesStart = await queryBalances(state.user1, state.tokens);
+      await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
+      const user1BalancesEnd = await queryBalances(state.user1, state.tokens);
+      const user1BalancesDiff = computeBalancesDiff(user1BalancesStart, user1BalancesEnd);
+
+      assertBNEqual(user1BalancesDiff[0], 0, 'no tokens[0] should be moved')
+      assertBNEqual(user1BalancesDiff[1], -state.quantities[0], 'tokens[1] should be moved as usual');
+    });
+
+    it('should skip frozen tokens for redeem', async function() {
+      await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
+      await state.tokens[0].pause({ from: state.owner });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user1 });
+
+      const user1BalancesStart = await queryBalances(state.user1, state.tokens);
+      await state.rebalancingBsktToken.redeem(10**18, [], { from: state.user1 });
+      const user1BalancesEnd = await queryBalances(state.user1, state.tokens);
+      const user1BalancesDiff = computeBalancesDiff(user1BalancesStart, user1BalancesEnd);
+
+      assertBNEqual(user1BalancesDiff[0], 0, 'no tokens[0] should be moved')
+      assertBNEqual(user1BalancesDiff[1], state.quantities[0], 'tokens[1] should be moved as usual');
+    });
+
+    it.only('should override tokensToSkip correctly', async function() {
+      await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
+      await state.tokens[0].pause({ from: state.owner });
+      await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user1 });
+
+      const user1BalancesStart = await queryBalances(state.user1, state.tokens);
+      await state.rebalancingBsktToken.redeem(10**18, [state.tokens[0].address, state.tokens[1].address], { from: state.user1 });
+      const user1BalancesEnd = await queryBalances(state.user1, state.tokens);
+      const user1BalancesDiff = computeBalancesDiff(user1BalancesStart, user1BalancesEnd);
+
+      assertBNEqual(user1BalancesDiff[0], 0, 'no tokens[0] should be moved')
+      assertBNEqual(user1BalancesDiff[1], 0, 'no tokens[1] should be moved');
     });
 
   });
