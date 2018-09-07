@@ -392,6 +392,8 @@ contract RebalancingBsktToken is
     return BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
   }
 
+  // It should not be possible to falsely report a frozen token
+  // If it's possible, it could result in stolen funds
   function reportFrozenToken(address token) public {
     (uint256 index, bool isIn) = tokensToSkip.indexOf(token);
     if (ERC20TokenUtils.checkFrozen(token)) {
@@ -430,6 +432,10 @@ contract RebalancingBsktToken is
 
   function getDeltaQuantities() external view returns (int256[] memory) {
     return deltaQuantities;
+  }
+
+  function getTokensToSkip() external view returns (address[] memory) {
+    return tokensToSkip;
   }
 
   // === MATH ===

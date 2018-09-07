@@ -1,5 +1,5 @@
-module.exports = function (expected, actual) {
-  for (let i = 0; i < expected.length; i++) {
-    assert.equal(expected[i], actual[i]);
+module.exports = function (actual, expected, message='') {
+  for (let i = 0; i < actual.length; i++) {
+    assert.equal(actual[i], expected[i], message);
   }
 };
