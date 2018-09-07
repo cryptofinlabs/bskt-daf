@@ -33,14 +33,14 @@ issuance, token redemption, and rebalancing based on the current data in the *po
 
 The *portfolio data component* allows one or more data managers to regularly select one or more
 ERC20 tokens and their balances. In exchange for this oracle service, data managers receive fees to
-read the oracle data on chain. Thie data manager can also be easily replaced by a community voting
+read the oracle data on chain. The data manager can also be easily replaced by a community voting
 mechanism, such as a [token curated registry](https://medium.com/@ilovebagels/token-curated-registries-1-0-61a232f8dac7) (TCR).
 
 ### Fund Component
 
 The *fund component* allows anyone to create/redeem fund tokens that reflect the portfolio data
-component and is ERC20 compliant. To create means to exchange underlying tokens for the fund token.
-To redeem means to exchange fund tokens for the underlying.
+component and is ERC20 compliant. To *create* means to exchange underlying tokens for the fund token.
+To *redeem* means to exchange fund tokens for the underlying.
 
 The fund has three main stages:
 
@@ -58,7 +58,7 @@ exit the fund — or sell the fund tokens on exchanges.
 
 A *data manager* creates a *portfolio data contract* that lists the top 10 Ethereum tokens by market
 cap. On a quarterly basis, the manager updates the tokens and weights to represent the current top 10.
-They receive ether from any party that wants to access the data.
+They receive Ether from any party that wants to access the data.
 
 Anyone can deploy a *fund* that represents the top 10 Ethereum tokens by market cap. This fund is
 paired to the existing data contract, and reads it at the end of every quarter. When a rebalance is
