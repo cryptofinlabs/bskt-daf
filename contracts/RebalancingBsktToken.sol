@@ -58,12 +58,12 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   TokenProxy public tokenProxy;
   Status public status;
 
-  uint256 public xInterval;
+  uint256 public rebalancePeriod;
   uint256 public xOffset;
   uint256 public auctionOffset;
   uint256 public auctionDuration;
   uint256 public optOutDuration;
-  uint256 public rebalanceDuration;
+  uint256 public settleDuration;
 
   Bid.Bid public bestBid;
 
@@ -76,50 +76,49 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   // === MODIFIERS ===
 
-  // intervals should always satisfy range [)
-  modifier onlyDuringValidInterval(FN fn) {
-    checkValidInterval(fn);
+  // Periods should always satisfy range [)
+  modifier onlyDuringValidPeriod(FN fn) {
+    checkValidPeriod(fn);
     _;
   }
 
   // add error messages
   // also handles status transitions
-  function checkValidInterval(FN fn) internal {
-    uint256 xIntervalStart = now.div(xInterval).mul(xInterval).add(xOffset);
+  function checkValidPeriod(FN fn) internal {
+    uint256 rebalancePeriodStart = now.div(rebalancePeriod).mul(rebalancePeriod).add(xOffset);
 
-    uint256 optOutIntervalStart = now;
-    uint256 optOutIntervalEnd = now.add(optOutDuration);
+    uint256 optOutPeriodStart = now;
+    uint256 optOutPeriodEnd = now.add(optOutDuration);
 
-    uint256 auctionIntervalStart = xIntervalStart.add(auctionOffset);
-    uint256 auctionIntervalEnd = auctionIntervalStart.add(auctionDuration);
+    uint256 auctionPeriodStart = rebalancePeriodStart.add(auctionOffset);
+    uint256 auctionPeriodEnd = auctionPeriodStart.add(auctionDuration);
 
-    uint256 rebalanceIntervalStart = auctionIntervalEnd;
-    uint256 rebalanceIntervalEnd = rebalanceIntervalStart.add(rebalanceDuration);
+    uint256 settlePeriodStart = auctionPeriodEnd;
+    uint256 settlePeriodEnd = settlePeriodStart.add(settleDuration);
 
-    uint256 openIntervalStart = rebalanceIntervalEnd;
-    //uint256 openIntervalEnd = now.div(xInterval).add(1).mul(xInterval).add(xOffset);
+    uint256 openPeriodStart = settlePeriodEnd;
 
     if (fn == FN.COMMIT_DELTA) {
       require(status == Status.OPEN || status == Status.OPT_OUT, "Error: Invalid status");
-      require(optOutIntervalEnd <= auctionIntervalStart);
+      require(optOutPeriodEnd <= auctionPeriodStart);
       if (status == Status.OPEN) {
         status = Status.OPT_OUT;
       }
     } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
       require(status == Status.OPT_OUT, "Error: Invalid status");
-      require(optOutIntervalStart <= now && now < optOutIntervalEnd || openIntervalStart <= now, "Error: not within opt out period");
+      require(optOutPeriodStart <= now && now < optOutPeriodEnd || openPeriodStart <= now, "Error: not within opt out period");
     } else if (fn == FN.BID) {
       // The first bid will transition status from opt out to auction
       require(status == Status.OPT_OUT || status == Status.AUCTIONS_OPEN, "Error: Invalid status");
-      require(auctionIntervalStart <= now && now < auctionIntervalEnd, "Error; not within opt out period");
-      if (status == Status.OPT_OUT && auctionIntervalStart <= now) {
+      require(auctionPeriodStart <= now && now < auctionPeriodEnd, "Error; not within opt out period");
+      if (status == Status.OPT_OUT && auctionPeriodStart <= now) {
         status = Status.AUCTIONS_OPEN;
       }
     } else if (fn == FN.REBALANCE) {
        require(status == Status.AUCTIONS_OPEN);
       // If no bids were made, so the status never transitioned from OPT_OUT to
       // AUCTIONS_OPEN, then bestBid.bidder is 0, which will trigger a require later
-      require(rebalanceIntervalStart <= now && now < rebalanceIntervalEnd, "Error: not within rebalancing period");
+      require(settlePeriodStart <= now && now < settlePeriodEnd, "Error: not within rebalancing period");
       status = Status.OPEN;
     } else {
       revert("Error: Period not recognized");
@@ -136,12 +135,12 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     uint256[] _quantities,
     uint256 _creationSize,
     address _registry,
-    uint256 _xInterval,
+    uint256 _rebalancePeriod,
     uint256 _xOffset,
     uint256 _auctionOffset,
     uint256 _auctionDuration,
     uint256 _optOutDuration,
-    uint256 _rebalanceDuration,
+    uint256 _settleDuration,
     string _name,
     string _symbol
   ) ERC20Detailed (_name, _symbol, 18)
@@ -151,7 +150,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     require(_tokens.length > 0);  // Will need this to prevent attack - can mint infinite tokens
     require(_tokens.length == _quantities.length);
     require(_optOutDuration < _auctionOffset);
-    require(_auctionOffset.add(_auctionDuration).add(_rebalanceDuration) <= _xInterval);
+    require(_auctionOffset.add(_auctionDuration).add(_settleDuration) <= _rebalancePeriod);
 
     // require not all zero
 
@@ -167,12 +166,12 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     tokenProxy = new TokenProxy(authorizedAddresses);
     escrow.setTokenProxy(address(tokenProxy));
 
-    xInterval = _xInterval;
+    rebalancePeriod = _rebalancePeriod;
     xOffset = _xOffset;
     auctionOffset = _auctionOffset;
     auctionDuration = _auctionDuration;
     optOutDuration = _optOutDuration;
-    rebalanceDuration = _rebalanceDuration;
+    settleDuration = _settleDuration;
 
     IERC20 feeToken = registry.feeToken();
     feeToken.approve(registry, MAX_UINT256());
@@ -184,7 +183,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   function issue(uint256 amount)
     external
-    onlyDuringValidInterval(FN.ISSUE)
+    onlyDuringValidPeriod(FN.ISSUE)
   {
     require(amount > 0);
     require((totalSupply() + amount) > totalSupply());
@@ -208,7 +207,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   function redeem(uint256 amount, address[] tokensToSkipOverride)
     external
-    onlyDuringValidInterval(FN.REDEEM)
+    onlyDuringValidPeriod(FN.REDEEM)
   {
     require(amount > 0);
     require(amount <= totalSupply());
@@ -289,10 +288,10 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // Anyone can call this
   function rebalance()
     external
-    onlyDuringValidInterval(FN.REBALANCE)
+    onlyDuringValidPeriod(FN.REBALANCE)
   {
     // commented out for out of gas error 770429428644264
-    // same functionality is being provided by checkValidInterval
+    // same functionality is being provided by checkValidPeriod
     //Bid memory _bestBid = bestBid;
     //require(_bestBid.bidder != address(0));
     settleBid();
@@ -330,7 +329,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   function bid(address[] _tokens, int256[] _quantities)
     external
-    onlyDuringValidInterval(FN.BID)
+    onlyDuringValidPeriod(FN.BID)
   {
     BidImpl.bid(_tokens, _quantities, bestBid, escrow, deltaTokens, deltaQuantities, totalUnits());
   }
@@ -341,7 +340,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // snapshot the registry
   function commitDelta()
     public
-    onlyDuringValidInterval(FN.COMMIT_DELTA)
+    onlyDuringValidPeriod(FN.COMMIT_DELTA)
   {
     (deltaTokens, deltaQuantities) = BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
     emit CommitDelta(deltaTokens, deltaQuantities);

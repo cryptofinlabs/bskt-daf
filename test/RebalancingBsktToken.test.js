@@ -50,36 +50,36 @@ async function moveToPeriod(
   period,
   lifecycle
 ) {
-  let xIntervalStart = Math.floor(currentTime() / lifecycle.xInterval) * lifecycle.xInterval + lifecycle.xOffset;
+  let rebalancePeriodStart = Math.floor(currentTime() / lifecycle.rebalancePeriod) * lifecycle.rebalancePeriod + lifecycle.xOffset;
 
   // Actual opt out interval uses `now`, but this is the earliest interval start possible
-  let optOutIntervalStart = xIntervalStart;
-  let optOutIntervalEnd = xIntervalStart + lifecycle.optOutDuration;
+  let optOutPeriodStart = rebalancePeriodStart;
+  let optOutPeriodEnd = rebalancePeriodStart + lifecycle.optOutDuration;
 
-  let auctionIntervalStart = xIntervalStart + lifecycle.auctionOffset;
-  let auctionIntervalEnd = auctionIntervalStart + lifecycle.auctionDuration;
+  let auctionPeriodStart = rebalancePeriodStart + lifecycle.auctionOffset;
+  let auctionPeriodEnd = auctionPeriodStart + lifecycle.auctionDuration;
 
-  let rebalanceIntervalStart = auctionIntervalEnd;
-  let rebalanceIntervalEnd = rebalanceIntervalStart + lifecycle.rebalanceDuration;
+  let settlePeriodStart = auctionPeriodEnd;
+  let settlePeriodEnd = settlePeriodStart + lifecycle.settleDuration;
 
-  let openIntervalStart = rebalanceIntervalEnd;
+  let openPeriodStart = settlePeriodEnd;
 
   let delta;
   switch (period) {
     case 'OPT_OUT':
-      delta = optOutIntervalStart - currentTime();
+      delta = optOutPeriodStart - currentTime();
       if (delta > 0) {
         await tempo.wait(delta);
       }
       break;
     case 'AUCTION':
-      delta = auctionIntervalStart - currentTime();
+      delta = auctionPeriodStart - currentTime();
       if (delta > 0) {
         await tempo.wait(delta);
       }
       break;
     case 'REBALANCE':
-      delta = rebalanceIntervalStart - currentTime();
+      delta = settlePeriodStart - currentTime();
       if (delta > 0) {
         await tempo.wait(delta);
       }
@@ -89,8 +89,8 @@ async function moveToPeriod(
 
 // Moves to start of next period
 async function waitForStartNextPeriod(lifecycle) {
-  const xIntervalNextStart = (Math.floor(currentTime() / lifecycle.xInterval) + 1) * lifecycle.xInterval;
-  const delta = xIntervalNextStart - currentTime();
+  const rebalancePeriodNextStart = (Math.floor(currentTime() / lifecycle.rebalancePeriod) + 1) * lifecycle.rebalancePeriod;
+  const delta = rebalancePeriodNextStart - currentTime();
   if (delta > 0) {
     await tempo.wait(delta);
   }
@@ -108,12 +108,12 @@ contract('RebalancingBsktToken', function(accounts) {
     feeAmount,
     numTokens,
     quantities,
-    xInterval = 7 * 24 * 60 * 60,  // Roughly weekly
+    rebalancePeriod = 7 * 24 * 60 * 60,  // Roughly weekly
     xOffset = 0,
     auctionOffset = 1 * 24 * 60 * 60,
     auctionDuration = 2 * 24 * 60 * 60,
     optOutDuration = 12 * 60 * 60,
-    rebalanceDuration = 1 * 24 * 60 * 60,
+    settleDuration = 1 * 24 * 60 * 60,
   ) {
     let state = {};
     const isFee = feeAmount !== 0;
@@ -121,12 +121,12 @@ contract('RebalancingBsktToken', function(accounts) {
     state.feeAmount = feeAmount;
     state.quantities = quantities;
     state.lifecycle = {
-      xInterval,
+      rebalancePeriod,
       xOffset,
       auctionOffset,
       auctionDuration,
       optOutDuration,
-      rebalanceDuration
+      settleDuration
     };
 
     state.owner = accounts[0];
@@ -152,12 +152,12 @@ contract('RebalancingBsktToken', function(accounts) {
       isFee ? [10**13].concat(quantities) : quantities,
       10**18,
       state.bsktRegistry.address,
-      xInterval,
+      rebalancePeriod,
       xOffset,
       auctionOffset,
       auctionDuration,
       optOutDuration,
-      rebalanceDuration,
+      settleDuration,
       'RebalancingBsktToken',
       'RBT',
       { from: state.owner }
