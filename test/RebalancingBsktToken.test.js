@@ -50,36 +50,36 @@ async function moveToPeriod(
   period,
   lifecycle
 ) {
-  let xIntervalStart = Math.floor(currentTime() / lifecycle.xInterval) * lifecycle.xInterval + lifecycle.xOffset;
+  let rebalancePeriodStart = Math.floor(currentTime() / lifecycle.rebalancePeriod) * lifecycle.rebalancePeriod + lifecycle.xOffset;
 
   // Actual opt out interval uses `now`, but this is the earliest interval start possible
-  let optOutIntervalStart = xIntervalStart;
-  let optOutIntervalEnd = xIntervalStart + lifecycle.optOutDuration;
+  let optOutPeriodStart = rebalancePeriodStart;
+  let optOutPeriodEnd = rebalancePeriodStart + lifecycle.optOutDuration;
 
-  let auctionIntervalStart = xIntervalStart + lifecycle.auctionOffset;
-  let auctionIntervalEnd = auctionIntervalStart + lifecycle.auctionDuration;
+  let auctionPeriodStart = rebalancePeriodStart + lifecycle.auctionOffset;
+  let auctionPeriodEnd = auctionPeriodStart + lifecycle.auctionDuration;
 
-  let rebalanceIntervalStart = auctionIntervalEnd;
-  let rebalanceIntervalEnd = rebalanceIntervalStart + lifecycle.rebalanceDuration;
+  let settlePeriodStart = auctionPeriodEnd;
+  let settlePeriodEnd = settlePeriodStart + lifecycle.settleDuration;
 
-  let openIntervalStart = rebalanceIntervalEnd;
+  let openPeriodStart = settlePeriodEnd;
 
   let delta;
   switch (period) {
     case 'OPT_OUT':
-      delta = optOutIntervalStart - currentTime();
+      delta = optOutPeriodStart - currentTime();
       if (delta > 0) {
         await tempo.wait(delta);
       }
       break;
     case 'AUCTION':
-      delta = auctionIntervalStart - currentTime();
+      delta = auctionPeriodStart - currentTime();
       if (delta > 0) {
         await tempo.wait(delta);
       }
       break;
     case 'REBALANCE':
-      delta = rebalanceIntervalStart - currentTime();
+      delta = settlePeriodStart - currentTime();
       if (delta > 0) {
         await tempo.wait(delta);
       }
@@ -89,8 +89,8 @@ async function moveToPeriod(
 
 // Moves to start of next period
 async function waitForStartNextPeriod(lifecycle) {
-  const xIntervalNextStart = (Math.floor(currentTime() / lifecycle.xInterval) + 1) * lifecycle.xInterval;
-  const delta = xIntervalNextStart - currentTime();
+  const rebalancePeriodNextStart = (Math.floor(currentTime() / lifecycle.rebalancePeriod) + 1) * lifecycle.rebalancePeriod;
+  const delta = rebalancePeriodNextStart - currentTime();
   if (delta > 0) {
     await tempo.wait(delta);
   }
@@ -108,12 +108,12 @@ contract('RebalancingBsktToken', function(accounts) {
     feeAmount,
     numTokens,
     quantities,
-    xInterval = 7 * 24 * 60 * 60,  // Roughly weekly
+    rebalancePeriod = 7 * 24 * 60 * 60,  // Roughly weekly
     xOffset = 0,
     auctionOffset = 1 * 24 * 60 * 60,
     auctionDuration = 2 * 24 * 60 * 60,
     optOutDuration = 12 * 60 * 60,
-    rebalanceDuration = 1 * 24 * 60 * 60,
+    settleDuration = 1 * 24 * 60 * 60,
   ) {
     let state = {};
     const isFee = feeAmount !== 0;
@@ -121,12 +121,12 @@ contract('RebalancingBsktToken', function(accounts) {
     state.feeAmount = feeAmount;
     state.quantities = quantities;
     state.lifecycle = {
-      xInterval,
+      rebalancePeriod,
       xOffset,
       auctionOffset,
       auctionDuration,
       optOutDuration,
-      rebalanceDuration
+      settleDuration
     };
 
     state.owner = accounts[0];
@@ -152,28 +152,29 @@ contract('RebalancingBsktToken', function(accounts) {
       isFee ? [10**13].concat(quantities) : quantities,
       10**18,
       state.bsktRegistry.address,
-      xInterval,
+      rebalancePeriod,
       xOffset,
       auctionOffset,
       auctionDuration,
       optOutDuration,
-      rebalanceDuration,
+      settleDuration,
       'RebalancingBsktToken',
       'RBT',
       { from: state.owner }
     );
     state.escrow = await state.rebalancingBsktToken.escrow.call();
+    state.tokenProxy = await state.rebalancingBsktToken.tokenProxy.call();
 
     if (isFee) {
       await state.feeToken.mint(state.user1, 100 * 10**18, { from: state.owner });
-      await state.feeToken.approve(state.rebalancingBsktToken.address, 100 * 10**18, { from: state.user1 });
-      await state.feeToken.approve(state.escrow, 100 * 10**18, { from: state.bidder1 });
+      await state.feeToken.approve(state.tokenProxy, 100 * 10**18, { from: state.user1 });
+      await state.feeToken.approve(state.tokenProxy, 100 * 10**18, { from: state.bidder1 });
     }
     for (let i = 0; i < state.tokens.length; i++) {
       await state.tokens[i].mint(state.user1, 100 * 10**18, { from: state.owner });
       await state.tokens[i].mint(state.bidder1, 100 * 10**18, { from: state.owner });
-      await state.tokens[i].approve(state.rebalancingBsktToken.address, 100 * 10**18, { from: state.user1 });
-      await state.tokens[i].approve(state.escrow, 100 * 10**18, { from: state.bidder1 });
+      await state.tokens[i].approve(state.tokenProxy, 100 * 10**18, { from: state.user1 });
+      await state.tokens[i].approve(state.tokenProxy, 100 * 10**18, { from: state.bidder1 });
     }
     return state;
   }
@@ -693,15 +694,15 @@ contract('RebalancingBsktToken', function(accounts) {
     beforeEach(async function () {
       state = await setupRebalancingBsktToken(0, 2, [100, 100]);
       await state.tokens[0].mint(state.user2, 10**18, { from: state.owner });
-      await state.tokens[0].approve(state.rebalancingBsktToken.address, 10**18, { from: state.user2 });
+      await state.tokens[0].approve(state.tokenProxy, 10**18, { from: state.user2 });
       await state.tokens[1].mint(state.user2, 10**18, { from: state.owner });
-      await state.tokens[1].approve(state.rebalancingBsktToken.address, 10**18, { from: state.user2 });
+      await state.tokens[1].approve(state.tokenProxy, 10**18, { from: state.user2 });
     });
 
     it('should report frozen token correctly', async function() {
       await state.tokens[0].pause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [state.tokens[0].address], 'reported frozen tokens should match');
     });
 
@@ -710,7 +711,7 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.tokens[1].pause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[1].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [state.tokens[0].address, state.tokens[1].address], 'reported frozen tokens should match');
     });
 
@@ -719,7 +720,7 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
       await state.tokens[0].unpause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [], 'reported frozen tokens should be empty');
     });
 
@@ -728,7 +729,7 @@ contract('RebalancingBsktToken', function(accounts) {
 
     it('should not add falsely reported token to tokensToSkip', async function() {
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [], 'reported frozen tokens should be empty');
     });
 
@@ -786,7 +787,7 @@ contract('RebalancingBsktToken', function(accounts) {
       assertBNEqual(user1BalancesDiff[1], state.quantities[0], 'tokens[1] should be moved as usual');
     });
 
-    it.only('should override tokensToSkip correctly', async function() {
+    it('should override tokensToSkip correctly', async function() {
       await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
       await state.tokens[0].pause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user1 });
