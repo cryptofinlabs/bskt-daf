@@ -1,11 +1,9 @@
 pragma solidity 0.4.24;
 //pragma experimental ABIEncoderV2;
 
-
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "cryptofin-solidity/contracts/rationals/Rational.sol";
-import "cryptofin-solidity/contracts/token-utils/ERC20TokenUtils.sol";
 import "cryptofin-solidity/contracts/rationals/RationalMath.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
@@ -16,24 +14,18 @@ import "./BsktRegistry.sol";
 import "./Escrow.sol";
 import "./IBsktToken.sol";
 import "./impl/BidImpl.sol";
-import "./Math.sol";
+import "./lib/Bid.sol";
+import "./lib/ERC20TokenUtils.sol";
+import "./lib/dYdX/TokenInteract.sol";
+import "./lib/dYdX/TokenProxy.sol";
 
 
-contract RebalancingBsktToken is
-  ERC20Detailed,
-  ERC20
-{
+contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   using AddressArrayUtils for address[];
   using RationalMath for Rational.Rational256;
   using SafeMath for uint256;
   using UIntArrayUtils for uint256[];
-
-  struct Bid {
-    address bidder;
-    address[] tokens;
-    int256[] quantities;
-  }
 
   // these need better names
   enum Status {
@@ -63,6 +55,7 @@ contract RebalancingBsktToken is
 
   BsktRegistry public registry;
   Escrow public escrow;
+  TokenProxy public tokenProxy;
   Status public status;
 
   uint256 public xInterval;
@@ -72,14 +65,13 @@ contract RebalancingBsktToken is
   uint256 public optOutDuration;
   uint256 public rebalanceDuration;
 
-  Bid public bestBid;
+  Bid.Bid public bestBid;
 
   // === EVENTS ===
 
   event Issue(address indexed creator, uint256 amount);
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event Rebalance(address caller);
-  event BidAccepted(address bidder, address[] tokens, int256[] deltas, uint256 totalUnits);
   event CommitDelta(address[] tokens, int256[] deltas);
 
   // === MODIFIERS ===
@@ -169,6 +161,11 @@ contract RebalancingBsktToken is
     registry = BsktRegistry(_registry);
 
     escrow = new Escrow(address(this));
+    address[] memory authorizedAddresses = new address[](2);
+    authorizedAddresses[0] = address(this);
+    authorizedAddresses[1] = address(escrow);
+    tokenProxy = new TokenProxy(authorizedAddresses);
+    escrow.setTokenProxy(address(tokenProxy));
 
     xInterval = _xInterval;
     xOffset = _xOffset;
@@ -197,13 +194,12 @@ contract RebalancingBsktToken is
     uint256 tokensLength = tokens.length;
     for (uint256 i = 0; i < tokensLength; i++) {
       address tokenAddress = tokens[i];
-      IERC20 erc20 = IERC20(tokenAddress);
       bool isIn = tokensToSkip.contains(tokenAddress);
       if (isIn) {
         continue;
       }
       uint256 amountTokens = amount.div(_creationSize).mul(quantities[i]);
-      require(erc20.transferFrom(msg.sender, address(this), amountTokens));
+      tokenProxy.transferTokens(tokenAddress, msg.sender, address(this), amountTokens);
     }
 
     _mint(msg.sender, amount);
@@ -235,40 +231,30 @@ contract RebalancingBsktToken is
 
     for (uint256 i = 0; i < tokensLength; i++) {
       address tokenAddress = tokens[i];
-      IERC20 erc20 = IERC20(tokenAddress);
       bool isIn = _tokensToSkip.contains(tokenAddress);
       if (isIn) {
         continue;
       }
       uint256 amountTokens = amount.div(_creationSize).mul(quantities[i]);
-      require(erc20.transfer(msg.sender, amountTokens));
+      TokenInteract.transfer(tokenAddress, msg.sender, amountTokens);
     }
     emit Redeem(msg.sender, amount, _tokensToSkip);
   }
 
   // Transfers tokens from escrow to fund and fund to bidder
   function settleBid() internal {
-    Bid memory _bestBid = bestBid;
-    uint256 _totalUnits = totalUnits();
-    escrow.releaseBid(_bestBid.tokens, address(this), _bestBid.quantities, _totalUnits);
-    for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
-      if (_bestBid.quantities[i] < 0) {
-        uint256 amount = uint256(-_bestBid.quantities[i]).mul(_totalUnits);
-        IERC20(_bestBid.tokens[i]).transfer(bestBid.bidder, amount);
-      }
-    }
+    BidImpl.settleBid(bestBid, escrow, totalUnits());
   }
 
   // Updates creation unit tokens and quantities
   // List of tokens in bestBid should be the union of tokens in registry and fund
   // TODO need to prune tokens with balance 0
   function updateBalances() internal {
-    Bid memory _bestBid = bestBid;
+    Bid.Bid memory _bestBid = bestBid;
     uint256[] memory updatedQuantities = new uint256[](_bestBid.tokens.length);
     for (uint256 i = 0; i < _bestBid.tokens.length; i++) {
-      IERC20 erc20 = IERC20(_bestBid.tokens[i]);
       // Must query balance to deal with airdrops
-      updatedQuantities[i] = erc20.balanceOf(address(this));
+      updatedQuantities[i] = TokenInteract.balanceOf(_bestBid.tokens[i], address(this));
     }
     uint256 _totalUnits = totalUnits();
     for (i = 0; i < _bestBid.tokens.length; i++) {
@@ -346,34 +332,7 @@ contract RebalancingBsktToken is
     external
     onlyDuringValidInterval(FN.BID)
   {
-    Bid memory _bestBid = bestBid;
-    // First bid
-    if (_bestBid.bidder == address(0)) {
-      require(BidImpl.acceptableBid(_tokens, _quantities, deltaTokens, deltaQuantities));
-      bestBid = Bid({
-        bidder: msg.sender,
-        tokens: _tokens,
-        quantities: _quantities
-      });
-      uint256 _totalUnits = totalUnits();
-      escrow.escrowBid(_tokens, msg.sender, _quantities, _totalUnits);
-      emit BidAccepted(msg.sender, _tokens, _quantities, _totalUnits);
-      // TODO: still need to check bids to make sure it's not malicious
-    } else {
-      if (compareBids(_tokens, _quantities, _bestBid.tokens, _bestBid.quantities)) {
-        escrow.releaseBid(_bestBid.tokens, _bestBid.bidder, _bestBid.quantities, _totalUnits);
-        bestBid = Bid({
-          bidder: msg.sender,
-          tokens: _tokens,
-          quantities: _quantities
-        });
-        escrow.escrowBid(_tokens, msg.sender, _quantities, _totalUnits);
-        emit BidAccepted(msg.sender, _tokens, _quantities, _totalUnits);
-      } else {
-        // Revert if bid isn't better than bestBid
-        revert();
-      }
-    }
+    BidImpl.bid(_tokens, _quantities, bestBid, escrow, deltaTokens, deltaQuantities, totalUnits());
   }
 
   // TODO: how to deal with no rebalance called, or something
@@ -384,11 +343,11 @@ contract RebalancingBsktToken is
     public
     onlyDuringValidInterval(FN.COMMIT_DELTA)
   {
-    (deltaTokens, deltaQuantities) = getRebalanceDeltas();
+    (deltaTokens, deltaQuantities) = BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
     emit CommitDelta(deltaTokens, deltaQuantities);
   }
 
-  function getRebalanceDeltas() public view returns (address[] memory, int256[] memory) {
+  function getRebalanceDeltas() public returns (address[] memory, int256[] memory) {
     return BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
   }
 
@@ -396,7 +355,7 @@ contract RebalancingBsktToken is
   // If it's possible, it could result in stolen funds
   function reportFrozenToken(address token) public {
     (uint256 index, bool isIn) = tokensToSkip.indexOf(token);
-    if (ERC20TokenUtils.checkFrozen(token)) {
+    if (ERC20TokenUtils.checkFrozen(token, address(tokenProxy))) {
       // Limit tracking frozen tokens to the creation unit to prevent spam
       bool isInCreationUnit = tokens.contains(token);
       require(isInCreationUnit);

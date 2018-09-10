@@ -163,17 +163,18 @@ contract('RebalancingBsktToken', function(accounts) {
       { from: state.owner }
     );
     state.escrow = await state.rebalancingBsktToken.escrow.call();
+    state.tokenProxy = await state.rebalancingBsktToken.tokenProxy.call();
 
     if (isFee) {
       await state.feeToken.mint(state.user1, 100 * 10**18, { from: state.owner });
-      await state.feeToken.approve(state.rebalancingBsktToken.address, 100 * 10**18, { from: state.user1 });
-      await state.feeToken.approve(state.escrow, 100 * 10**18, { from: state.bidder1 });
+      await state.feeToken.approve(state.tokenProxy, 100 * 10**18, { from: state.user1 });
+      await state.feeToken.approve(state.tokenProxy, 100 * 10**18, { from: state.bidder1 });
     }
     for (let i = 0; i < state.tokens.length; i++) {
       await state.tokens[i].mint(state.user1, 100 * 10**18, { from: state.owner });
       await state.tokens[i].mint(state.bidder1, 100 * 10**18, { from: state.owner });
-      await state.tokens[i].approve(state.rebalancingBsktToken.address, 100 * 10**18, { from: state.user1 });
-      await state.tokens[i].approve(state.escrow, 100 * 10**18, { from: state.bidder1 });
+      await state.tokens[i].approve(state.tokenProxy, 100 * 10**18, { from: state.user1 });
+      await state.tokens[i].approve(state.tokenProxy, 100 * 10**18, { from: state.bidder1 });
     }
     return state;
   }
@@ -693,15 +694,15 @@ contract('RebalancingBsktToken', function(accounts) {
     beforeEach(async function () {
       state = await setupRebalancingBsktToken(0, 2, [100, 100]);
       await state.tokens[0].mint(state.user2, 10**18, { from: state.owner });
-      await state.tokens[0].approve(state.rebalancingBsktToken.address, 10**18, { from: state.user2 });
+      await state.tokens[0].approve(state.tokenProxy, 10**18, { from: state.user2 });
       await state.tokens[1].mint(state.user2, 10**18, { from: state.owner });
-      await state.tokens[1].approve(state.rebalancingBsktToken.address, 10**18, { from: state.user2 });
+      await state.tokens[1].approve(state.tokenProxy, 10**18, { from: state.user2 });
     });
 
     it('should report frozen token correctly', async function() {
       await state.tokens[0].pause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [state.tokens[0].address], 'reported frozen tokens should match');
     });
 
@@ -710,7 +711,7 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.tokens[1].pause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[1].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [state.tokens[0].address, state.tokens[1].address], 'reported frozen tokens should match');
     });
 
@@ -719,7 +720,7 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
       await state.tokens[0].unpause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [], 'reported frozen tokens should be empty');
     });
 
@@ -728,7 +729,7 @@ contract('RebalancingBsktToken', function(accounts) {
 
     it('should not add falsely reported token to tokensToSkip', async function() {
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user2 });
-      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip();
+      const tokensToSkip = await state.rebalancingBsktToken.getTokensToSkip.call();
       assertArrayEqual(tokensToSkip, [], 'reported frozen tokens should be empty');
     });
 
@@ -786,7 +787,7 @@ contract('RebalancingBsktToken', function(accounts) {
       assertBNEqual(user1BalancesDiff[1], state.quantities[0], 'tokens[1] should be moved as usual');
     });
 
-    it.only('should override tokensToSkip correctly', async function() {
+    it('should override tokensToSkip correctly', async function() {
       await state.rebalancingBsktToken.issue(10**18, { from: state.user1 });
       await state.tokens[0].pause({ from: state.owner });
       await state.rebalancingBsktToken.reportFrozenToken(state.tokens[0].address, { from: state.user1 });

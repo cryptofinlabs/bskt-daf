@@ -5,11 +5,14 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
 import "./OnlyCore.sol";
+import "./lib/dYdX/TokenProxy.sol";
 
 
 contract Escrow is OnlyCore {
 
   using SafeMath for uint256;
+
+  TokenProxy tokenProxy;
 
   // === EVENTS ===
 
@@ -18,6 +21,13 @@ contract Escrow is OnlyCore {
   event ReleaseBid(address[] tokens, address to, uint256[] amounts);
 
   constructor(address core) OnlyCore(core) public {
+  }
+
+  function setTokenProxy(address tokenProxyAddress)
+    public
+    onlyCore
+  {
+    tokenProxy = TokenProxy(tokenProxyAddress);
   }
 
   // TODO: consider negative deltas! make uint256
@@ -37,7 +47,7 @@ contract Escrow is OnlyCore {
     for (uint256 i = 0; i < tokens.length; i++) {
       if (quantities[i] > 0) {
         uint256 amount = uint256(quantities[i]).mul(totalUnits);
-        ERC20(tokens[i]).transferFrom(from, address(this), amount);
+        tokenProxy.transferTokens(tokens[i], from, address(this), amount);
         amounts[i] = amount;
       }
     }
@@ -58,6 +68,7 @@ contract Escrow is OnlyCore {
     for (uint256 i = 0; i < tokens.length; i++) {
       if (quantities[i] > 0) {
         uint256 amount = uint256(quantities[i]).mul(totalUnits);
+        // TODO: tokenInteract
         ERC20(tokens[i]).transfer(to, amount);
         amounts[i] = amount;
       }

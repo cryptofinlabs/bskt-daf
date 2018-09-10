@@ -1,7 +1,6 @@
 pragma solidity 0.4.24;
 pragma experimental "v0.5.0";
 
-
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
