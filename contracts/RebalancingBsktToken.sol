@@ -36,7 +36,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   }
 
   enum FN {
-    COMMIT_DELTA,
+    PROPOSE,
     ISSUE,
     REDEEM,
     BID,
@@ -48,9 +48,10 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   uint256 public creationSize;
 
   // Snapshot of the delta of tokens needed to rebalance
-  // These are set by commitDelta
+  // These are set by proposeRebalance
   address[] public deltaTokens;
   int256[] public deltaQuantities;
+  uint256[] public targetQuantities;
   address[] public tokensToSkip;
 
   BsktRegistry public registry;
@@ -72,7 +73,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   event Issue(address indexed creator, uint256 amount);
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event Rebalance(address caller);
-  event CommitDelta(address[] tokens, int256[] deltas);
+  event ProposeRebalance(address[] tokens, int256[] deltas, uint256[] targetQuantities);
 
   // === MODIFIERS ===
 
@@ -98,7 +99,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
     uint256 openPeriodStart = settlePeriodEnd;
 
-    if (fn == FN.COMMIT_DELTA) {
+    if (fn == FN.PROPOSE) {
       require(status == Status.OPEN || status == Status.OPT_OUT, "Error: Invalid status");
       require(optOutPeriodEnd <= auctionPeriodStart);
       if (status == Status.OPEN) {
@@ -323,7 +324,9 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
       tokensB,
       quantitiesB,
       deltaTokens,
-      deltaQuantities
+      deltaQuantities,
+      targetQuantities,
+      totalUnits()
     );
   }
 
@@ -331,22 +334,22 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     external
     onlyDuringValidPeriod(FN.BID)
   {
-    BidImpl.bid(_tokens, _quantities, bestBid, escrow, deltaTokens, deltaQuantities, totalUnits());
+    BidImpl.bid(_tokens, _quantities, bestBid, escrow, deltaTokens, deltaQuantities, targetQuantities, totalUnits());
   }
 
   // TODO: how to deal with no rebalance called, or something
 
-  // commitDelta can be called multiple times, as long as there's enough time left
+  // proposeRebalance can be called multiple times, as long as there's enough time left
   // snapshot the registry
-  function commitDelta()
+  function proposeRebalance()
     public
-    onlyDuringValidPeriod(FN.COMMIT_DELTA)
+    onlyDuringValidPeriod(FN.PROPOSE)
   {
-    (deltaTokens, deltaQuantities) = BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
-    emit CommitDelta(deltaTokens, deltaQuantities);
+    (deltaTokens, deltaQuantities, targetQuantities) = BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
+    emit ProposeRebalance(deltaTokens, deltaQuantities, targetQuantities);
   }
 
-  function getRebalanceDeltas() public returns (address[] memory, int256[] memory) {
+  function getRebalanceDeltas() public returns (address[] memory, int256[] memory, uint256[] memory) {
     return BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
   }
 
