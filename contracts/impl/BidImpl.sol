@@ -54,44 +54,40 @@ library BidImpl {
   //   (getRebalanceDeltas takes care of separating +/-, and the bidder must construct the call such that this requirement is satisfied)
   // * Compares the two percentage arrays by comparing the first element, and iterating
   function compareBids(
-    address[] memory tokensA,
+    address[] memory tokens,
     int256[] memory quantitiesA,
-    address[] memory tokensB,
     int256[] memory quantitiesB,
-    address[] memory deltaTokens,
-    int256[] memory deltaQuantities,
-    uint256[] memory targetQuantities,
+    int256[] storage deltaQuantities,
     uint256 _totalUnits
   )
     public
-    view
     returns (bool)
   {
-    require(tokensA.length == quantitiesA.length);
-    require(tokensA.length == tokensB.length);
-    require(tokensA.length == quantitiesB.length);
-
-    Rational.Rational256[] memory fillProportionA = new Rational.Rational256[](deltaTokens.length);
-    Rational.Rational256[] memory fillProportionB = new Rational.Rational256[](deltaTokens.length);
-    for (uint256 i = 0; i < deltaTokens.length; i++) {
+    Rational.Rational256[] memory fillProportionA = new Rational.Rational256[](tokens.length);
+    Rational.Rational256[] memory fillProportionB = new Rational.Rational256[](tokens.length);
+    for (uint256 i = 0; i < tokens.length; i++) {
       if (deltaQuantities[i] > 0) {
         require(quantitiesA[i] >= 0);
         require(quantitiesB[i] >= 0);
-        uint256 tokenBalance = TokenInteract.balanceOf(deltaTokens[i], this);
+        uint256 tokenBalance = TokenInteract.balanceOf(tokens[i], this);
         // Balances this bid would provide
-        uint256 postBidBalanceA = tokenBalance.add(uint256(quantitiesA[i]).mul(_totalUnits));
-        uint256 postBidBalanceB = tokenBalance.add(uint256(quantitiesB[i]).mul(_totalUnits));
-        uint256 targetBalance = targetQuantities[i].mul(_totalUnits);
+        uint256 targetBalance = tokenBalance.add(uint256(deltaQuantities[i]).mul(_totalUnits));
 
-        fillProportionA[i] = Rational.Rational256({ n: uint256(postBidBalanceA), d: uint256(targetBalance) });
-        fillProportionB[i] = Rational.Rational256({ n: uint256(postBidBalanceB), d: uint256(targetBalance) });
+        fillProportionA[i] = Rational.Rational256({
+          n: tokenBalance.add(uint256(quantitiesA[i]).mul(_totalUnits)),
+          d: uint256(targetBalance)
+        });
+        fillProportionB[i] = Rational.Rational256({
+          n: tokenBalance.add(uint256(quantitiesB[i]).mul(_totalUnits)),
+          d: uint256(targetBalance)
+        });
       } else {
         // If tokens are being sold (negative delta), entry is 100
         // It's assumed bidders act in their own economic interest, so they
         // wouldn't leave any tokens on the table
         // Also anything with deltaQuantity 0 is automatically 100%
-        fillProportionA[i] = Rational.Rational256({ n: 100, d: 1 });
-        fillProportionB[i] = Rational.Rational256({ n: 100, d: 1 });
+        fillProportionA[i] = Rational.Rational256({ n: 1, d: 1 });
+        fillProportionB[i] = Rational.Rational256({ n: 1, d: 1 });
         continue;
       }
     }
@@ -116,7 +112,7 @@ library BidImpl {
   // TODO: handle invalid data
   // deltas required. + means this contract needs to buy, - means sell
   // costs fees for the fund
-  function getRebalanceDeltas(BsktRegistry registry, address[] tokens, uint256 _totalUnits) public returns (address[] memory, int256[] memory, uint256[] memory) {
+  function getRebalanceDeltas(BsktRegistry registry, address[] tokens, uint256 _totalUnits) public returns (address[] memory, int256[] memory) {
     require(_totalUnits > 0);
 
     address[] memory registryTokens = registry.getTokens();
@@ -133,33 +129,30 @@ library BidImpl {
       // TODO: add safemath
       deltas[i] = int256(targetQuantities[i]) - (int256(quantity));
     }
-    return separatePositiveNegative(targetTokens, deltas, targetQuantities);
+    return separatePositiveNegative(targetTokens, deltas);
   }
 
-  function separatePositiveNegative(address[] memory _tokens, int256[] memory _deltas, uint256[] memory _quantities)
+  function separatePositiveNegative(address[] memory _tokens, int256[] memory _deltas)
     internal
     pure
-    returns (address[] memory, int256[] memory, uint256[] memory)
+    returns (address[] memory, int256[] memory)
   {
     address[] memory _separatedTokens = new address[](_tokens.length);
     int256[] memory _separatedDeltas = new int256[](_tokens.length);
-    uint256[] memory _separatedQuantities = new uint256[](_tokens.length);
     uint256 startPointer = 0;
     uint256 endPointer = _tokens.length - 1;
     for (uint256 i = 0; i < _tokens.length; i++) {
       if (_deltas[i] > 0) {
         _separatedTokens[startPointer] = _tokens[i];
         _separatedDeltas[startPointer] = _deltas[i];
-        _separatedQuantities[startPointer] = _quantities[i];
         startPointer++;
       } else {
         _separatedTokens[endPointer] = _tokens[i];
         _separatedDeltas[endPointer] = _deltas[i];
-        _separatedQuantities[endPointer] = _quantities[i];
         endPointer = endPointer.sub(1);
       }
     }
-    return (_separatedTokens, _separatedDeltas, _separatedQuantities);
+    return (_separatedTokens, _separatedDeltas);
   }
 
   // Transfers tokens from escrow to fund and fund to bidder
@@ -173,7 +166,15 @@ library BidImpl {
     }
   }
 
-  function bid(address[] _tokens, int256[] _quantities, Bid.Bid storage bestBid, Escrow escrow, address[] deltaTokens, int256[] deltaQuantities, uint256[] targetQuantities, uint256 _totalUnits)
+  function bid(
+    address[] _tokens,
+    int256[] _quantities,
+    Bid.Bid storage bestBid,
+    Escrow escrow,
+    address[] storage deltaTokens,
+    int256[] storage deltaQuantities,
+    uint256 _totalUnits
+  )
     external
   {
     // First bid
@@ -186,19 +187,19 @@ library BidImpl {
       emit BidAccepted(msg.sender, _tokens, _quantities, _totalUnits);
       // TODO: still need to check bids to make sure it's not malicious
     } else {
+      // TODO: assert that tokens arrays are all same
+      require(deltaTokens.isEqual(_tokens));
+      require(deltaTokens.isEqual(bestBid.tokens));
       bool isBidBetter = compareBids(
         _tokens,
         _quantities,
-        bestBid.tokens,
         bestBid.quantities,
-        deltaTokens,
         deltaQuantities,
-        targetQuantities,
         _totalUnits);
       if (isBidBetter) {
         escrow.releaseBid(bestBid.tokens, bestBid.bidder, bestBid.quantities, _totalUnits);
         bestBid.bidder = msg.sender;
-        bestBid.tokens = _tokens;
+        // bestBid.tokens aleady set
         bestBid.quantities = _quantities;
         escrow.escrowBid(_tokens, msg.sender, _quantities, _totalUnits);
         emit BidAccepted(msg.sender, _tokens, _quantities, _totalUnits);

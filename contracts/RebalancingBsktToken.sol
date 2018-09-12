@@ -51,7 +51,6 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // These are set by proposeRebalance
   address[] public deltaTokens;
   int256[] public deltaQuantities;
-  uint256[] public targetQuantities;
   address[] public tokensToSkip;
 
   BsktRegistry public registry;
@@ -73,7 +72,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   event Issue(address indexed creator, uint256 amount);
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event Rebalance(address caller);
-  event ProposeRebalance(address[] tokens, int256[] deltas, uint256[] targetQuantities);
+  event ProposeRebalance(address[] tokens, int256[] deltas);
 
   // === MODIFIERS ===
 
@@ -315,17 +314,16 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     int256[] memory quantitiesB
   )
   public
-  view
   returns (bool)
   {
+    // Variables pulled out of compareBids and asserted here because of callstack limit
+    require(deltaTokens.isEqual(tokensA));
+    require(deltaTokens.isEqual(tokensB));
     return BidImpl.compareBids(
       tokensA,
       quantitiesA,
-      tokensB,
       quantitiesB,
-      deltaTokens,
       deltaQuantities,
-      targetQuantities,
       totalUnits()
     );
   }
@@ -334,7 +332,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     external
     onlyDuringValidPeriod(FN.BID)
   {
-    BidImpl.bid(_tokens, _quantities, bestBid, escrow, deltaTokens, deltaQuantities, targetQuantities, totalUnits());
+    BidImpl.bid(_tokens, _quantities, bestBid, escrow, deltaTokens, deltaQuantities, totalUnits());
   }
 
   // TODO: how to deal with no rebalance called, or something
@@ -345,11 +343,11 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     public
     onlyDuringValidPeriod(FN.PROPOSE)
   {
-    (deltaTokens, deltaQuantities, targetQuantities) = BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
-    emit ProposeRebalance(deltaTokens, deltaQuantities, targetQuantities);
+    (deltaTokens, deltaQuantities) = BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
+    emit ProposeRebalance(deltaTokens, deltaQuantities);
   }
 
-  function getRebalanceDeltas() public returns (address[] memory, int256[] memory, uint256[] memory) {
+  function getRebalanceDeltas() public returns (address[] memory, int256[] memory) {
     return BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
   }
 
