@@ -36,7 +36,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   }
 
   enum FN {
-    COMMIT_DELTA,
+    PROPOSE,
     ISSUE,
     REDEEM,
     BID,
@@ -48,9 +48,11 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   uint256 public creationSize;
 
   // Snapshot of the delta of tokens needed to rebalance
-  // These are set by commitDelta
+  // These are set by proposeRebalance
+  // TODO: rename to rebalanceTokens
   address[] public deltaTokens;
-  int256[] public deltaQuantities;
+  uint256[] public currentQuantities;  // Ordered same as deltas for rebalancing
+  uint256[] public targetQuantities;
   address[] public tokensToSkip;
 
   BsktRegistry public registry;
@@ -72,7 +74,8 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   event Issue(address indexed creator, uint256 amount);
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event Rebalance(address caller);
-  event CommitDelta(address[] tokens, int256[] deltas);
+  event ProposeRebalance(address[] tokens, uint256[] targetQuantities);
+  event BidAccepted(address bidder, address[] tokens, int256[] bidQuantities, uint256 totalUnits);
 
   // === MODIFIERS ===
 
@@ -98,7 +101,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
     uint256 openPeriodStart = settlePeriodEnd;
 
-    if (fn == FN.COMMIT_DELTA) {
+    if (fn == FN.PROPOSE) {
       require(status == Status.OPEN || status == Status.OPT_OUT, "Error: Invalid status");
       require(optOutPeriodEnd <= auctionPeriodStart);
       if (status == Status.OPEN) {
@@ -301,53 +304,66 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     emit Rebalance(msg.sender);
   }
 
-  // Compares two bids, returning true if the first bid is better, and breaking ties with the second bid
-  // How it works:
-  // * Maps each bid into an array of percentages representing the percentage of each token filled
-  // * Requires that these percentages are sorted in increasing order, and that all positives are first
-  //   (getRebalanceDeltas takes care of separating +/-, and the bidder must construct the call such that this requirement is satisfied)
-  // * Compares the two percentage arrays by comparing the first element, and iterating
-  function compareBids(
-    address[] memory tokensA,
-    int256[] memory quantitiesA,
-    address[] memory tokensB,
-    int256[] memory quantitiesB
-  )
-  public
-  view
-  returns (bool)
-  {
-    return BidImpl.compareBids(
-      tokensA,
-      quantitiesA,
-      tokensB,
-      quantitiesB,
-      deltaTokens,
-      deltaQuantities
-    );
-  }
-
-  function bid(address[] _tokens, int256[] _quantities)
+  function bid(uint256 numerator, uint256 denominator)
     external
     onlyDuringValidPeriod(FN.BID)
   {
-    BidImpl.bid(_tokens, _quantities, bestBid, escrow, deltaTokens, deltaQuantities, totalUnits());
+    Rational.Rational256 memory bidPercentage = Rational.Rational256({ n: numerator, d: denominator });
+    int256[] memory bidQuantities = BidImpl.computeBidQuantities(numerator, denominator, currentQuantities, targetQuantities);
+    uint256 _totalUnits = totalUnits();
+    address[] memory _deltaTokens = deltaTokens;
+    if (bestBid.bidder == address(0)) {
+      // No previous bid, so accept this one
+      bestBid.bidder = msg.sender;
+      bestBid.bidPercentage = bidPercentage;
+      bestBid.tokens = _deltaTokens;
+      bestBid.quantities = bidQuantities;
+      escrow.escrowBid(_deltaTokens, msg.sender, bidQuantities, _totalUnits);
+      emit BidAccepted(msg.sender, _deltaTokens, bidQuantities, _totalUnits);
+    } else {
+      bool isBidBetter = bidPercentage.gt(bestBid.bidPercentage);
+      if (isBidBetter) {
+        escrow.releaseBid(bestBid.tokens, bestBid.bidder, bestBid.quantities, _totalUnits);
+        bestBid.bidder = msg.sender;
+        bestBid.bidPercentage = bidPercentage;
+        // bestBid.tokens aleady set
+        bestBid.quantities = bidQuantities;
+        escrow.escrowBid(_deltaTokens, msg.sender, bidQuantities, _totalUnits);
+        emit BidAccepted(msg.sender, _deltaTokens, bidQuantities, _totalUnits);
+      } else {
+        // Revert if bid isn't better than bestBid
+        revert();
+      }
+    }
   }
 
   // TODO: how to deal with no rebalance called, or something
 
-  // commitDelta can be called multiple times, as long as there's enough time left
-  // snapshot the registry
-  function commitDelta()
-    public
-    onlyDuringValidPeriod(FN.COMMIT_DELTA)
+  /**
+   * Takes a snapshot of the registry for use when rebalancing
+   * proposeRebalance is callable multiple times, as long as there's enough time left
+   */
+  function proposeRebalance() public
+    onlyDuringValidPeriod(FN.PROPOSE)
   {
-    (deltaTokens, deltaQuantities) = BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
-    emit CommitDelta(deltaTokens, deltaQuantities);
+    require(totalUnits() > 0);
+    (deltaTokens, targetQuantities) = BidImpl.getProposedCreationUnit(registry, tokens);
+    currentQuantities = getCurrentQuantities(deltaTokens);
+    emit ProposeRebalance(deltaTokens, targetQuantities);
   }
 
-  function getRebalanceDeltas() public returns (address[] memory, int256[] memory) {
-    return BidImpl.getRebalanceDeltas(registry, tokens, totalUnits());
+  // naming: currentRebalanceQuantities?
+  function getCurrentQuantities(address[] memory _targetTokens)
+    public
+    view
+    returns (uint256[] memory)
+  {
+    uint256[] memory _currentQuantities = new uint256[](_targetTokens.length);
+    uint256 length = _targetTokens.length;
+    for (uint256 i = 0; i < length; i++) {
+      _currentQuantities[i] = TokenInteract.balanceOf(_targetTokens[i], address(this)).div(totalUnits());
+    }
+    return _currentQuantities;
   }
 
   // It should not be possible to falsely report a frozen token
@@ -366,6 +382,19 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
         tokensToSkip.sPopCheap(index);
       }
     }
+  }
+
+  function computeBidQuantities(
+    uint256 numerator,
+    uint256 denominator,
+    uint256[] currentQuantities,
+    uint256[] targetQuantities
+  )
+    public
+    pure
+    returns (int256[] memory)
+  {
+    return BidImpl.computeBidQuantities(numerator, denominator, currentQuantities, targetQuantities);
   }
 
   function creationUnit() public view returns (address[] memory, uint256[] memory) {
@@ -388,12 +417,12 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     return deltaTokens;
   }
 
-  function getDeltaQuantities() external view returns (int256[] memory) {
-    return deltaQuantities;
-  }
-
   function getTokensToSkip() external view returns (address[] memory) {
     return tokensToSkip;
+  }
+
+  function getTargetQuantities() external view returns (uint256[] memory) {
+    return targetQuantities;
   }
 
   // === MATH ===

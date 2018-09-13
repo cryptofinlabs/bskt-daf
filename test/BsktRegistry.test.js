@@ -5,7 +5,7 @@ const _ = require('underscore');
 const BigNumber = require('bignumber.js');
 
 const assertRevert = require('./helpers/assertRevert.js');
-const assertArrayEqual = require('./helpers/assertArrayEqual.js');
+const assertArrayEqual = require('./helpers/assertHelpers.js').assertArrayEqual;
 const checkEntries = require('./helpers/checkEntries.js');
 
 
