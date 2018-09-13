@@ -295,10 +295,8 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     external
     onlyDuringValidPeriod(FN.REBALANCE)
   {
-    // commented out for out of gas error 770429428644264
-    // same functionality is being provided by checkValidPeriod
-    //Bid memory _bestBid = bestBid;
-    //require(_bestBid.bidder != address(0));
+    // This case should be caught by onlyDuringValidPeriod since the state would've never transitioned to the required one
+    assert(bestBid.bidder != address(0));
     settleBid();
     updateBalances();
     // set some didRebalance flag
