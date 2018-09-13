@@ -266,9 +266,11 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     // Filter out tokens with quantity 0
     uint256[] memory indexArray = updatedQuantities.argFilter(isNonZero);
     if (indexArray.length != _bestBid.tokens.length) {
+      // Mismatch because some were zero, so filter them out
       tokens = _bestBid.tokens.argGet(indexArray);
       quantities = updatedQuantities.argGet(indexArray);
     } else {
+      // If they're the same, just use _bestBid.tokens
       tokens = _bestBid.tokens;
       quantities = updatedQuantities;
     }
@@ -348,6 +350,9 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   {
     require(totalUnits() > 0);
     (deltaTokens, targetQuantities) = BidImpl.getProposedCreationUnit(registry, tokens);
+    uint256[] memory indexArray = targetQuantities.argFilter(isNonZero);
+    // Prevent creation unit from being nothing, which would allow unlimited issuance
+    require(indexArray.length != 0);
     currentQuantities = getCurrentQuantities(deltaTokens);
     emit ProposeRebalance(deltaTokens, targetQuantities);
   }

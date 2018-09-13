@@ -180,14 +180,14 @@ contract('RebalancingBsktToken', function(accounts) {
     return state;
   }
 
-  context.skip('with simple initial allocation and zero fees', function() {
+  context('with simple initial allocation and zero fees', function() {
     let state;
 
     beforeEach(async function () {
       state = await setupRebalancingBsktToken(0, 2, [100, 100]);
     });
 
-    it('should bid successfully for first bid', async function() {
+    it.skip('should bid successfully for first bid', async function() {
       let creationSize = await state.rebalancingBsktToken.creationSize.call();
       await state.rebalancingBsktToken.issue(creationSize, { from: state.user1 });
 
@@ -220,10 +220,10 @@ contract('RebalancingBsktToken', function(accounts) {
       // assert that bestBid is correct
     });
 
-    it('should bid successfully for second bid', async function() {
+    it.skip('should bid successfully for second bid', async function() {
     });
 
-    it('should bid and rebalance correctly for perfect bid', async function() {
+    it.skip('should bid and rebalance correctly for perfect bid', async function() {
       // Starts at 100, 100
       let creationSize = await state.rebalancingBsktToken.creationSize.call();
       await state.rebalancingBsktToken.issue(creationSize, { from: state.user1 });
@@ -268,7 +268,7 @@ contract('RebalancingBsktToken', function(accounts) {
 
     // this test won't work anymore
     // need new bid comparison approach, preferrably doesn't involve sorting
-    it('should bid and rebalance correctly for mediocre bid and multiple units', async function() {
+    it.skip('should bid and rebalance correctly for mediocre bid and multiple units', async function() {
       //// Starts at 100, 100
       //let creationSize = await state.rebalancingBsktToken.creationSize.call();
       //await state.rebalancingBsktToken.issue(3 * creationSize, { from: state.user1 });
@@ -305,7 +305,18 @@ contract('RebalancingBsktToken', function(accounts) {
     });
 
     // issue, register, bid, rebalance, redeem
-    it('should', async function() {
+    it.skip('should', async function() {
+    });
+
+    it('should not allow rebalance proposal with all zero quantities', async function() {
+      await state.bsktRegistry.set(0, state.tokens[0].address, 0, { from: state.dataManager });
+      await state.bsktRegistry.set(1, state.tokens[2].address, 0, { from: state.dataManager });
+
+      try {
+        await state.rebalancingBsktToken.proposeRebalance({ from: state.user1 });
+      } catch (e) {
+        assertRevert(e);
+      }
     });
 
   });
@@ -315,11 +326,6 @@ contract('RebalancingBsktToken', function(accounts) {
 
     beforeEach(async function () {
       state = await setupRebalancingBsktToken(0, 5, [100, 5000, 31200, 123013]);
-    });
-
-    it('should correctly compute creationSize', async function() {
-      //const creationSize = await state.rebalancingBsktToken.creationSize.call();
-      //assert.equal(creationSize, 10**16, 'creationSize should be 1e16');
     });
 
     it('should issue', async function() {
