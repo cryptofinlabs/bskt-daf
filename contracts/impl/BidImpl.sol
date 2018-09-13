@@ -1,5 +1,5 @@
 pragma solidity 0.4.24;
-pragma experimental ABIEncoderV2;
+//pragma experimental ABIEncoderV2;
 
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/rationals/Rational.sol";
@@ -46,7 +46,8 @@ library BidImpl {
   }
 
   function computeBidQuantities(
-    Rational.Rational256 bidPercentage,
+    uint256 numerator,
+    uint256 denominator,
     uint256[] currentQuantities,
     uint256[] targetQuantities
   )
@@ -54,6 +55,7 @@ library BidImpl {
     pure
     returns (int256[] memory)
   {
+    Rational.Rational256 memory bidPercentage = Rational.Rational256({ n: numerator, d: denominator });
     int256[] memory bidQuantities = new int256[](targetQuantities.length);
     for (uint256 i = 0; i < targetQuantities.length; i++) {
       uint256 resultQuantity = bidPercentage.scalarMul(targetQuantities[i]);

@@ -309,7 +309,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     onlyDuringValidPeriod(FN.BID)
   {
     Rational.Rational256 memory bidPercentage = Rational.Rational256({ n: numerator, d: denominator });
-    int256[] memory bidQuantities = BidImpl.computeBidQuantities(bidPercentage, currentQuantities, targetQuantities);
+    int256[] memory bidQuantities = BidImpl.computeBidQuantities(numerator, denominator, currentQuantities, targetQuantities);
     uint256 _totalUnits = totalUnits();
     address[] memory _deltaTokens = deltaTokens;
     if (bestBid.bidder == address(0)) {
@@ -382,6 +382,19 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
         tokensToSkip.sPopCheap(index);
       }
     }
+  }
+
+  function computeBidQuantities(
+    uint256 numerator,
+    uint256 denominator,
+    uint256[] currentQuantities,
+    uint256[] targetQuantities
+  )
+    public
+    pure
+    returns (int256[] memory)
+  {
+    return BidImpl.computeBidQuantities(numerator, denominator, currentQuantities, targetQuantities);
   }
 
   function creationUnit() public view returns (address[] memory, uint256[] memory) {

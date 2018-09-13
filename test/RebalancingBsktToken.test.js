@@ -7,8 +7,7 @@ const BigNumber = require('bignumber.js');
 const _ = require('underscore');
 const tempo = require('@digix/tempo')(web3);
 
-const assertArrayEqual = require('./helpers/assertArrayEqual.js');
-const assertBNEqual = require('./helpers/assertBNEqual.js');
+const { assertBNEqual, assertArrayEqual, assertBNArrayEqual } = require('./helpers/assertHelpers.js');
 const assertRevert = require('./helpers/assertRevert.js');
 const checkEntries = require('./helpers/checkEntries.js');
 
@@ -25,6 +24,7 @@ const DAY = 24 * HOUR;
 
 // === HELPER FUNCTIONS ===
 
+// Helper to remove overhead in querying and checking balances
 async function queryBalances(account, tokens) {
   return Promise.all(
     _.map(tokens, (token) => {
@@ -167,6 +167,7 @@ contract('RebalancingBsktToken', function(accounts) {
 
     if (isFee) {
       await state.feeToken.mint(state.user1, 100 * 10**18, { from: state.owner });
+      await state.feeToken.mint(state.bidder1, 100 * 10**18, { from: state.owner });
       await state.feeToken.approve(state.tokenProxy, 100 * 10**18, { from: state.user1 });
       await state.feeToken.approve(state.tokenProxy, 100 * 10**18, { from: state.bidder1 });
     }
@@ -361,26 +362,69 @@ contract('RebalancingBsktToken', function(accounts) {
       await state.rebalancingBsktToken.issue(creationSize, { from: state.user1 });
     });
 
-    it.skip('should bid and rebalance correctly', async function() {
-      await state.bsktRegistry.set(0, state.tokens[0].address, 10**13, { from: state.dataManager });
+    it('should compute bid quantities correctly with 100%', async function() {
+      const bidQuantities = await state.rebalancingBsktToken.computeBidQuantities.call(
+        100,
+        100,
+        [1000, 5000, 31200, 123013],
+        [1500, 5000, 30000, 123013],
+        { from: state.bidder1 }
+      );
+      const expectedBidQuantities = [500, 0, -1200, 0];
+      assertBNArrayEqual(bidQuantities, expectedBidQuantities);
+    });
+
+    it('should compute bid quantities correctly with 70.2225%', async function() {
+      const bidQuantities = await state.rebalancingBsktToken.computeBidQuantities.call(
+        702225,
+        1000000,
+        [1000, 1000, 1000, 1000],
+        [1500, 500, 1000, 1000],
+        { from: state.bidder1 }
+      );
+      const expectedBidQuantities = [
+        Math.floor(1053.3375 - 1000),
+        Math.floor(351.1125 - 1000),
+        Math.floor(702.225 - 1000),
+        Math.floor(702.225 - 1000)
+      ];
+      assertBNArrayEqual(bidQuantities, expectedBidQuantities);
+    });
+
+    it('should compute bid quantities correctly with 130%', async function() {
+      const bidQuantities = await state.rebalancingBsktToken.computeBidQuantities.call(
+        130,
+        100,
+        [1000, 5000, 31200, 123013],
+        [1500, 5000, 30000, 123013],
+        { from: state.bidder1 }
+      );
+      const expectedBidQuantities = [950, 1500, 7800, 36903];
+      assertBNArrayEqual(bidQuantities, expectedBidQuantities);
+    });
+
+    it('should bid and rebalance correctly', async function() {
       await state.bsktRegistry.set(1, state.tokens[0].address, 1500, { from: state.dataManager });
       await state.bsktRegistry.set(3, state.tokens[2].address, 30000, { from: state.dataManager });
 
+      await state.rebalancingBsktToken.proposeRebalance({ from: state.user1 });
+
       await moveToPeriod('AUCTION', state.lifecycle);
-      const bidTokens = [state.tokens[0].address, state.tokens[2].address, state.feeToken.address, state.tokens[1].address, state.tokens[3].address, state.tokens[4].address];
-      const bidQuantities = [500, -1200, 0, 0, 0, 0];
-      await state.rebalancingBsktToken.bid(bidTokens, bidQuantities, { from: state.bidder1 });
+      const bidder1BalanceStart = await queryBalances(state.bidder1, [state.tokens[0], state.tokens[1], state.tokens[2]]);
+      const fundBalanceStart = await queryBalances(state.rebalancingBsktToken.address, [state.tokens[0], state.tokens[1], state.tokens[2]]);
+      await state.rebalancingBsktToken.bid(100, 100, { from: state.bidder1 });
 
       await moveToPeriod('REBALANCE', state.lifecycle);
       await state.rebalancingBsktToken.rebalance({ from: state.bidder1 });
+      const fundBalanceEnd = await queryBalances(state.rebalancingBsktToken.address, [state.tokens[0], state.tokens[1], state.tokens[2]]);
+      const bidder1BalanceEnd = await queryBalances(state.bidder1, [state.tokens[0], state.tokens[1], state.tokens[2]]);
 
-      const tokenABalance = await state.tokens[0].balanceOf.call(state.rebalancingBsktToken.address);
-      const tokenBBalance = await state.tokens[1].balanceOf.call(state.rebalancingBsktToken.address);
-      const tokenCBalance = await state.tokens[2].balanceOf.call(state.rebalancingBsktToken.address);
-      assert.equal(tokenABalance.toNumber(), 1500, 'rebalancingBsktToken state.tokens[0] balance should be correct');
-      assert.equal(tokenCBalance.toNumber(), 30000, 'rebalancingBsktToken state.tokens[2] balance should be correct');
-
-      // TODO: check bidder1 balances
+      const bidder1BalanceDiff = computeBalancesDiff(bidder1BalanceStart, bidder1BalanceEnd);
+      const fundBalanceDiff = computeBalancesDiff(fundBalanceStart, fundBalanceEnd);
+      assertBNEqual(bidder1BalanceDiff[0], -500, 'bidder state.tokens[1] should decrease by 500');
+      assertBNEqual(fundBalanceDiff[0], 500, 'fund state.tokens[1] should increase by 500');
+      assertBNEqual(bidder1BalanceDiff[2], 1200, 'bidder state.tokens[1] should increase by 1200');
+      assertBNEqual(fundBalanceDiff[2], -1200, 'fund state.tokens[1] should decrease by 1200');
     });
 
     it('should propose rebalance correctly', async function() {
