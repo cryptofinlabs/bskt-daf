@@ -427,10 +427,34 @@ contract('RebalancingBsktToken', function(accounts) {
 
       const bidder1BalanceDiff = computeBalancesDiff(bidder1BalanceStart, bidder1BalanceEnd);
       const fundBalanceDiff = computeBalancesDiff(fundBalanceStart, fundBalanceEnd);
-      assertBNEqual(bidder1BalanceDiff[0], -500, 'bidder state.tokens[1] should decrease by 500');
-      assertBNEqual(fundBalanceDiff[0], 500, 'fund state.tokens[1] should increase by 500');
-      assertBNEqual(bidder1BalanceDiff[2], 1200, 'bidder state.tokens[1] should increase by 1200');
-      assertBNEqual(fundBalanceDiff[2], -1200, 'fund state.tokens[1] should decrease by 1200');
+      assertBNEqual(bidder1BalanceDiff[0], -500, 'bidder state.tokens[0] should decrease by 500');
+      assertBNEqual(fundBalanceDiff[0], 500, 'fund state.tokens[0] should increase by 500');
+      assertBNEqual(bidder1BalanceDiff[2], 1200, 'bidder state.tokens[2] should increase by 1200');
+      assertBNEqual(fundBalanceDiff[2], -1200, 'fund state.tokens[2] should decrease by 1200');
+    });
+
+    it('should bid and rebalance correctly for 80% bid', async function() {
+      await state.bsktRegistry.set(1, state.tokens[0].address, 1500, { from: state.dataManager });
+      await state.bsktRegistry.set(3, state.tokens[2].address, 30000, { from: state.dataManager });
+
+      await state.rebalancingBsktToken.proposeRebalance({ from: state.user1 });
+
+      await moveToPeriod('AUCTION', state.lifecycle);
+      const bidder1BalanceStart = await queryBalances(state.bidder1, [state.tokens[0], state.tokens[1], state.tokens[2]]);
+      const fundBalanceStart = await queryBalances(state.rebalancingBsktToken.address, [state.tokens[0], state.tokens[1], state.tokens[2]]);
+      await state.rebalancingBsktToken.bid(80, 100, { from: state.bidder1 });
+
+      await moveToPeriod('REBALANCE', state.lifecycle);
+      await state.rebalancingBsktToken.rebalance({ from: state.bidder1 });
+      const fundBalanceEnd = await queryBalances(state.rebalancingBsktToken.address, [state.tokens[0], state.tokens[1], state.tokens[2]]);
+      const bidder1BalanceEnd = await queryBalances(state.bidder1, [state.tokens[0], state.tokens[1], state.tokens[2]]);
+
+      const bidder1BalanceDiff = computeBalancesDiff(bidder1BalanceStart, bidder1BalanceEnd);
+      const fundBalanceDiff = computeBalancesDiff(fundBalanceStart, fundBalanceEnd);
+      assertBNEqual(bidder1BalanceDiff[0], -200, 'bidder state.tokens[0] should decrease by 500');
+      assertBNEqual(fundBalanceDiff[0], 200, 'fund state.tokens[0] should increase by 500');
+      assertBNEqual(bidder1BalanceDiff[2], 7200, 'bidder state.tokens[2] should increase by 1200');
+      assertBNEqual(fundBalanceDiff[2], -7200, 'fund state.tokens[2] should decrease by 1200');
     });
 
     it('should propose rebalance correctly', async function() {

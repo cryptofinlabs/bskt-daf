@@ -22,13 +22,13 @@ module.exports = (deployer, network, accounts) => {
     }).then(() => {
       return deployer.link(Math, [TokenProxy]);
     }).then(() => {
+      return deployer.deploy(ERC20TokenUtils);
+    }).then(() => {
+      return deployer.link(ERC20TokenUtils, [BidImpl]);
+    }).then(() => {
       return deployer.deploy(BidImpl);
     }).then(() => {
       return deployer.link(BidImpl, [RebalancingBsktToken]);
-    }).then(() => {
-      return deployer.deploy(ERC20TokenUtils);
-    }).then(() => {
-      return deployer.link(ERC20TokenUtils, [RebalancingBsktToken]);
     }).then(() => {
       return ERC20Token.new({ from: accounts[0] });
     }).then(_feeToken => {

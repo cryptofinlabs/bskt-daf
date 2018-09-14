@@ -35,14 +35,6 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     assert(tokens.length == quantities.length);
   }
 
-  //// TODO: pull out into library contract
-  //modifier chargeFee() {
-    //if (readFeeAmount > 0) {
-      //require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
-    //}
-    //_;
-  //}
-
   // === CONSTRUCTOR ===
 
   constructor(address _beneficiary, address _feeToken, uint256 _amount) public {

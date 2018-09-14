@@ -6,16 +6,14 @@ import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
 import "cryptofin-solidity/contracts/rationals/Rational.sol";
 import "cryptofin-solidity/contracts/rationals/RationalMath.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
 
 import "./BsktRegistry.sol";
 import "./Escrow.sol";
 import "./IBsktToken.sol";
 import "./impl/BidImpl.sol";
 import "./lib/Bid.sol";
-import "./lib/ERC20TokenUtils.sol";
 import "./lib/dYdX/TokenInteract.sol";
 import "./lib/dYdX/TokenProxy.sol";
 
@@ -75,7 +73,6 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   event Redeem(address indexed redeemer, uint256 amount, address[] skippedTokens);
   event Rebalance(address caller);
   event ProposeRebalance(address[] tokens, uint256[] targetQuantities);
-  event BidAccepted(address bidder, address[] tokens, int256[] bidQuantities, uint256 totalUnits);
 
   // === MODIFIERS ===
 
@@ -176,8 +173,9 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     optOutDuration = _optOutDuration;
     settleDuration = _settleDuration;
 
-    IERC20 feeToken = registry.feeToken();
-    feeToken.approve(registry, MAX_UINT256());
+    // Set up allowance so fees can be paid to registry
+    address feeToken = registry.feeToken();
+    TokenInteract.approve(feeToken, registry, MAX_UINT256());
 
     status = Status.OPT_OUT;
   }
@@ -308,33 +306,16 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     external
     onlyDuringValidPeriod(FN.BID)
   {
-    Rational.Rational256 memory bidPercentage = Rational.Rational256({ n: numerator, d: denominator });
-    int256[] memory bidQuantities = BidImpl.computeBidQuantities(numerator, denominator, currentQuantities, targetQuantities);
-    uint256 _totalUnits = totalUnits();
-    address[] memory _deltaTokens = deltaTokens;
-    if (bestBid.bidder == address(0)) {
-      // No previous bid, so accept this one
-      bestBid.bidder = msg.sender;
-      bestBid.bidPercentage = bidPercentage;
-      bestBid.tokens = _deltaTokens;
-      bestBid.quantities = bidQuantities;
-      escrow.escrowBid(_deltaTokens, msg.sender, bidQuantities, _totalUnits);
-      emit BidAccepted(msg.sender, _deltaTokens, bidQuantities, _totalUnits);
-    } else {
-      bool isBidBetter = bidPercentage.gt(bestBid.bidPercentage);
-      if (isBidBetter) {
-        escrow.releaseBid(bestBid.tokens, bestBid.bidder, bestBid.quantities, _totalUnits);
-        bestBid.bidder = msg.sender;
-        bestBid.bidPercentage = bidPercentage;
-        // bestBid.tokens aleady set
-        bestBid.quantities = bidQuantities;
-        escrow.escrowBid(_deltaTokens, msg.sender, bidQuantities, _totalUnits);
-        emit BidAccepted(msg.sender, _deltaTokens, bidQuantities, _totalUnits);
-      } else {
-        // Revert if bid isn't better than bestBid
-        revert();
-      }
-    }
+    return BidImpl.bid(
+      numerator,
+      denominator,
+      deltaTokens,
+      targetQuantities,
+      currentQuantities,
+      totalUnits(),
+      escrow,
+      bestBid
+    );
   }
 
   // TODO: how to deal with no rebalance called, or something
@@ -351,40 +332,25 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     uint256[] memory indexArray = targetQuantities.argFilter(isNonZero);
     // Prevent creation unit from being nothing, which would allow unlimited issuance
     require(indexArray.length != 0);
-    currentQuantities = getCurrentQuantities(deltaTokens);
+    currentQuantities = BidImpl.getCurrentQuantities(deltaTokens, totalUnits());
     emit ProposeRebalance(deltaTokens, targetQuantities);
   }
 
-  // naming: currentRebalanceQuantities?
-  function getCurrentQuantities(address[] memory _targetTokens)
+  /**
+   * Returns array of quantities in specified order
+   */
+  function getCurrentQuantities(address[] memory _tokens)
     public
     view
     returns (uint256[] memory)
   {
-    uint256[] memory _currentQuantities = new uint256[](_targetTokens.length);
-    uint256 length = _targetTokens.length;
-    for (uint256 i = 0; i < length; i++) {
-      _currentQuantities[i] = TokenInteract.balanceOf(_targetTokens[i], address(this)).div(totalUnits());
-    }
-    return _currentQuantities;
+    return BidImpl.getCurrentQuantities(_tokens, totalUnits());
   }
 
   // It should not be possible to falsely report a frozen token
   // If it's possible, it could result in stolen funds
   function reportFrozenToken(address token) public {
-    (uint256 index, bool isIn) = tokensToSkip.indexOf(token);
-    if (ERC20TokenUtils.checkFrozen(token, address(tokenProxy))) {
-      // Limit tracking frozen tokens to the creation unit to prevent spam
-      bool isInCreationUnit = tokens.contains(token);
-      require(isInCreationUnit);
-      if (!isIn) {
-        tokensToSkip.push(token);
-      }
-    } else {
-      if (isIn) {
-        tokensToSkip.sPopCheap(index);
-      }
-    }
+    BidImpl.reportFrozenToken(token, tokens, tokensToSkip, tokenProxy);
   }
 
   function computeBidQuantities(
