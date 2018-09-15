@@ -37,6 +37,11 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   // === CONSTRUCTOR ===
 
+  /**
+   * @param _beneficiary Address to payout fees to
+   * @param _feeToken Token to charge fees in
+   * @param _amount Amount of tokens charged per read
+   */
   constructor(address _beneficiary, address _feeToken, uint256 _amount) public {
     beneficiary = _beneficiary;
     feeToken = IERC20(_feeToken);
@@ -45,11 +50,22 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   // === PUBLIC FUNCTIONS ===
 
+  /**
+   * Updates all token and quantity entries in registry
+   * @param _tokens Array of token addresses
+   * @param _quantities Array of quantities
+   */
   function batchSet(address[] memory _tokens, uint256[] memory _quantities) public onlyOwner checkInvariants {
     tokens = _tokens;
     quantities = _quantities;
   }
 
+  /**
+   * Updates a single entry in the registry
+   * @param index Index of the entry to update
+   * @param token Address of the token
+   * @param quantity Amount
+   */
   function set(uint256 index, address token, uint256 quantity) public onlyOwner checkInvariants {
     // only if it's greater than by one. otherwise it should fail or pad
     if (index >= tokens.length) {
@@ -62,6 +78,10 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     emit Set(index, token, quantity);
   }
 
+  /**
+   * Removes entry from registry, specified by token
+   * @param token Address of token to remove
+   */
   function remove(address token) public onlyOwner returns (bool) {
     (uint256 index, bool isIn) = tokens.indexOf(token);
     if (!isIn) {
@@ -73,6 +93,10 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     }
   }
 
+  /**
+   * Returns quantity of entry associated with specified token
+   * @param token Token to get
+   */
   function get(address token) public returns (uint256) {
     // token interact
     require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount), "fee could not be collected");
@@ -85,7 +109,12 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     }
   }
 
-  // Careful, O(n^2)
+  /**
+   * Gets array of quantities in order specified by _tokens. This is required since the registry's data is stored in two separate arrays
+   * Costs a fee to call on chain
+   * Careful, runs O(n^2)
+   * @param _tokens Array of tokens to fetch quantities of
+   */
   function getQuantities(address[] memory _tokens) public returns (uint256[] memory) {
     require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount), "fee could not be collected");
     uint256 length = _tokens.length;
@@ -102,8 +131,10 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     return _quantities;
   }
 
+  /**
+   * Returns all quantity entries in the order they're stored internally. Costs a fee to call on-chain.
+   */
   function getAllQuantities() public returns (uint256[] memory) {
-    // token interact, require this
     require(feeToken.transferFrom(msg.sender, beneficiary, readFeeAmount));
     emit Get(msg.sender, readFeeAmount);
     return quantities;
@@ -111,6 +142,9 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
 
   // === VIEW FUNCTIONS ===
 
+  /**
+   * Returns all tokens in the order they're stored internally.
+   */
   function getTokens() public view returns (address[] memory) {
     return tokens;
   }
