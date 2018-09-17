@@ -8,6 +8,7 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 
 import "./IBsktRegistry.sol";
+import "./lib/dYdX/TokenInteract.sol";
 
 
 contract BsktRegistry is /* IBsktRegistry, */ Ownable {
@@ -155,7 +156,7 @@ contract BsktRegistry is /* IBsktRegistry, */ Ownable {
     external
     onlyOwner
   {
-    require(IERC20(_token).transfer(owner(), _amount));
+    TokenInteract.transfer(_token, owner(), _amount);
   }
 
 }

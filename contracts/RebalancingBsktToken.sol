@@ -47,7 +47,6 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   // Snapshot of the delta of tokens needed to rebalance
   // These are set by proposeRebalance
-  // TODO: rename to rebalanceTokens
   address[] public deltaTokens;
   uint256[] public currentQuantities;  // Ordered same as deltas for rebalancing
   uint256[] public targetQuantities;
@@ -248,7 +247,6 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   // Updates creation unit tokens and quantities
   // List of tokens in bestBid should be the union of tokens in registry and fund
-  // TODO need to prune tokens with balance 0
   function updateBalances() internal {
     Bid.Bid memory _bestBid = bestBid;
     uint256[] memory updatedQuantities = new uint256[](_bestBid.tokens.length);
@@ -317,8 +315,6 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
       bestBid
     );
   }
-
-  // TODO: how to deal with no rebalance called, or something
 
   /**
    * Takes a snapshot of the registry for use when rebalancing

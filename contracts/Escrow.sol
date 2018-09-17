@@ -2,10 +2,10 @@ pragma solidity 0.4.24;
 
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
 import "./OnlyCore.sol";
 import "./lib/dYdX/TokenProxy.sol";
+import "./lib/dYdX/TokenInteract.sol";
 
 
 contract Escrow is OnlyCore {
@@ -30,9 +30,13 @@ contract Escrow is OnlyCore {
     tokenProxy = TokenProxy(tokenProxyAddress);
   }
 
-  // TODO: consider negative deltas! make uint256
-  // only transfer if > 0
-
+  /**
+   * Escrows quantities specified by bid. Only callable by the fund contract.
+   * @param tokens Addresses of tokens
+   * @param from Bidder address to transfer from
+   * @param quantities Quantities for one creation unit
+   * @param totalUnits Total number of creation units
+   */
   function escrowBid(
     address[] memory tokens,
     address from,
@@ -42,7 +46,6 @@ contract Escrow is OnlyCore {
     public
     onlyCore
   {
-    // TODO: use token interact which asserts that delta is exactly amount
     uint256[] memory amounts = new uint256[](tokens.length);  // For log
     for (uint256 i = 0; i < tokens.length; i++) {
       if (quantities[i] > 0) {
@@ -54,6 +57,13 @@ contract Escrow is OnlyCore {
     emit EscrowBid(tokens, from, amounts);
   }
 
+  /**
+   * Releases escrowed tokens. Only callable by fund.
+   * @param tokens Addresses of tokens
+   * @param to Bidder address to transfer to
+   * @param quantities Quantities for one creation unit
+   * @param totalUnits Total number of creation units
+   */
   function releaseBid(
     address[] memory tokens,
     address to,
@@ -63,13 +73,11 @@ contract Escrow is OnlyCore {
     public
     onlyCore
   {
-    // maybe refactor into shim that constructs amounts and internal function with simpler interface
-    uint256[] memory amounts = new uint256[](tokens.length);  // For log
+    uint256[] memory amounts = new uint256[](tokens.length);
     for (uint256 i = 0; i < tokens.length; i++) {
       if (quantities[i] > 0) {
         uint256 amount = uint256(quantities[i]).mul(totalUnits);
-        // TODO: tokenInteract
-        ERC20(tokens[i]).transfer(to, amount);
+        TokenInteract.transfer(tokens[i], to, amount);
         amounts[i] = amount;
       }
     }
