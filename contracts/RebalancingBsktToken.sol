@@ -58,7 +58,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   Status public status;
 
   uint256 public rebalancePeriod;
-  uint256 public xOffset;
+  uint256 public periodOffset;
   uint256 public auctionOffset;
   uint256 public auctionDuration;
   uint256 public optOutDuration;
@@ -84,7 +84,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // add error messages
   // also handles status transitions
   function checkValidPeriod(FN fn) internal {
-    uint256 rebalancePeriodStart = now.div(rebalancePeriod).mul(rebalancePeriod).add(xOffset);
+    uint256 rebalancePeriodStart = now.div(rebalancePeriod).mul(rebalancePeriod).add(periodOffset);
 
     uint256 optOutPeriodStart = now;
     uint256 optOutPeriodEnd = now.add(optOutDuration);
@@ -126,6 +126,20 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   // === CONSTRUCTOR ===
 
+  /**
+   * @param _tokens Tokens in the initial creation unit
+   * @param _quantities Quantities in the initial creation unit
+   * @param _creationSize Amount (in base units) for one creation unit
+   * @param _registry Address of registry contract
+   * @param _rebalancePeriod Duration in seconds of the rebalancing period
+   * @param _periodOffset Duration in seconds of the offset to start of rebalancing period
+   * @param _auctionOffset Duration in seconds of the offset to the start of the auction period
+   * @param _auctionDuration Duration in seconds of the auction period
+   * @param _optOutDuration Duration in seconds of the opt out period
+   * @param _settleDuration Duration in seconds of the settle period
+   * @param _name
+   * @param _symbol
+   */
   constructor(
     // should we remove these in favour of just specifying registry and setting to that initially?
     // read from registry here
@@ -135,7 +149,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     uint256 _creationSize,
     address _registry,
     uint256 _rebalancePeriod,
-    uint256 _xOffset,
+    uint256 _periodOffset,
     uint256 _auctionOffset,
     uint256 _auctionDuration,
     uint256 _optOutDuration,
@@ -166,7 +180,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     escrow.setTokenProxy(address(tokenProxy));
 
     rebalancePeriod = _rebalancePeriod;
-    xOffset = _xOffset;
+    periodOffset = _periodOffset;
     auctionOffset = _auctionOffset;
     auctionDuration = _auctionDuration;
     optOutDuration = _optOutDuration;
@@ -352,14 +366,14 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   function computeBidQuantities(
     uint256 numerator,
     uint256 denominator,
-    uint256[] currentQuantities,
-    uint256[] targetQuantities
+    uint256[] _currentQuantities,
+    uint256[] _targetQuantities
   )
     public
     pure
     returns (int256[] memory)
   {
-    return BidImpl.computeBidQuantities(numerator, denominator, currentQuantities, targetQuantities);
+    return BidImpl.computeBidQuantities(numerator, denominator, _currentQuantities, _targetQuantities);
   }
 
   function creationUnit() public view returns (address[] memory, uint256[] memory) {
