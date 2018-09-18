@@ -25,11 +25,9 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   using SafeMath for uint256;
   using UIntArrayUtils for uint256[];
 
-  // these need better names
   enum Status {
     OPT_OUT,  // After snapshotting the delta, give investors some time to opt-out if they don't agree with the rebalance. I want a better name though
     AUCTIONS_OPEN,  // Bids being accepted
-    // Rebalance
     OPEN
   }
 
@@ -42,13 +40,11 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   }
 
   address[] public tokens;
-  uint256[] public quantities;  // is this needed? Could read balances from token contracts directly, though a potential risk
+  uint256[] public quantities;
   uint256 public creationSize;
 
-  // Snapshot of the delta of tokens needed to rebalance
-  // These are set by proposeRebalance
   address[] public deltaTokens;
-  uint256[] public currentQuantities;  // Ordered same as deltas for rebalancing
+  uint256[] public currentQuantities;
   uint256[] public targetQuantities;
   address[] public tokensToSkip;
 
@@ -81,8 +77,6 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     _;
   }
 
-  // add error messages
-  // also handles status transitions
   function checkValidPeriod(FN fn) internal {
     uint256 rebalancePeriodStart = now.div(rebalancePeriod).mul(rebalancePeriod).add(periodOffset);
 
@@ -104,7 +98,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
         status = Status.OPT_OUT;
       }
     } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
-      require(status == Status.OPT_OUT, "Error: Invalid status");
+      require(status == Status.OPT_OUT || status == Status.OPEN, "Error: Invalid status");
       require(optOutPeriodStart <= now && now < optOutPeriodEnd || openPeriodStart <= now, "Error: not within opt out period");
     } else if (fn == FN.BID) {
       // The first bid will transition status from opt out to auction
@@ -137,8 +131,8 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
    * @param _auctionDuration Duration in seconds of the auction period
    * @param _optOutDuration Duration in seconds of the opt out period
    * @param _settleDuration Duration in seconds of the settle period
-   * @param _name
-   * @param _symbol
+   * @param _name Name of the token
+   * @param _symbol Ticker symbol of the token
    */
   constructor(
     // should we remove these in favour of just specifying registry and setting to that initially?
@@ -407,11 +401,11 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // === MATH ===
 
   // TODO: use the one from library once a fix to solidity-coverage linking issue is found
-  function MAX_UINT256() internal pure returns (uint256) {
+  function MAX_UINT256() internal returns (uint256) {
     return 2 ** 256 - 1;
   }
 
-  function isNonZero(uint256 n) internal pure returns (bool) {
+  function isNonZero(uint256 n) internal returns (bool) {
     return n != 0;
   }
 

@@ -5,7 +5,6 @@ const ERC20Token = artifacts.require('ERC20Token');
 const Math = artifacts.require('Math');
 const TokenProxy = artifacts.require('TokenProxy');
 const BidImpl = artifacts.require('BidImpl');
-const ERC20TokenUtils = artifacts.require('ERC20TokenUtils');
 const RebalancingBsktToken = artifacts.require('RebalancingBsktToken');
 
 
@@ -21,10 +20,6 @@ module.exports = (deployer, network, accounts) => {
       return deployer.deploy(Math);
     }).then(() => {
       return deployer.link(Math, [TokenProxy]);
-    }).then(() => {
-      return deployer.deploy(ERC20TokenUtils);
-    }).then(() => {
-      return deployer.link(ERC20TokenUtils, [BidImpl]);
     }).then(() => {
       return deployer.deploy(BidImpl);
     }).then(() => {
