@@ -291,8 +291,8 @@ contract('RebalancingBsktToken', function(accounts) {
       const bidderBalancesDiff = computeBalancesDiff(bidderBalancesStart, bidderBalancesEnd);
       const fundBalancesDiff = computeBalancesDiff(fundBalancesStart, fundBalancesEnd);
 
-      assertBNArrayEqual(bidderBalancesDiff, [50, 100, -150], '');
-      assertBNArrayEqual(fundBalancesDiff, [-50, -100, 150], '');
+      assertBNArrayEqual(bidderBalancesDiff, [50, 100, -150], 'bidder balances diff should be correct');
+      assertBNArrayEqual(fundBalancesDiff, [-50, -100, 150], 'fund balances diff should be correct');
     });
 
     it('should bid and rebalance correctly for mediocre bid and multiple units', async function() {

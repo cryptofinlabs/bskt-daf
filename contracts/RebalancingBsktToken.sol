@@ -1,5 +1,4 @@
 pragma solidity 0.4.24;
-//pragma experimental ABIEncoderV2;
 
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/array-utils/UIntArrayUtils.sol";
@@ -92,18 +91,29 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     uint256 openPeriodStart = settlePeriodEnd;
 
     if (fn == FN.PROPOSE) {
-      require(status == Status.OPEN || status == Status.OPT_OUT, "Error: Invalid status");
+      require(status == Status.OPEN ||
+              status == Status.OPT_OUT,
+              "Error: Invalid status");
       require(optOutPeriodEnd <= auctionPeriodStart);
       if (status == Status.OPEN) {
         status = Status.OPT_OUT;
       }
     } else if (fn == FN.ISSUE || fn == FN.REDEEM) {
-      require(status == Status.OPT_OUT || status == Status.OPEN, "Error: Invalid status");
-      require(optOutPeriodStart <= now && now < optOutPeriodEnd || openPeriodStart <= now, "Error: not within opt out period");
+      require(status == Status.OPT_OUT ||
+              status == Status.OPEN,
+              "Error: Invalid status");
+      require(optOutPeriodStart <= now &&
+              now < optOutPeriodEnd ||
+              openPeriodStart <= now,
+              "Error: not within opt out period");
     } else if (fn == FN.BID) {
       // The first bid will transition status from opt out to auction
-      require(status == Status.OPT_OUT || status == Status.AUCTIONS_OPEN, "Error: Invalid status");
-      require(auctionPeriodStart <= now && now < auctionPeriodEnd, "Error; not within opt out period");
+      require(status == Status.OPT_OUT ||
+              status == Status.AUCTIONS_OPEN,
+              "Error: Invalid status");
+      require(auctionPeriodStart <= now &&
+              now < auctionPeriodEnd,
+              "Error; not within opt out period");
       if (status == Status.OPT_OUT && auctionPeriodStart <= now) {
         status = Status.AUCTIONS_OPEN;
       }
@@ -111,7 +121,9 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
        require(status == Status.AUCTIONS_OPEN);
       // If no bids were made, so the status never transitioned from OPT_OUT to
       // AUCTIONS_OPEN, then bestBid.bidder is 0, which will trigger a require later
-      require(settlePeriodStart <= now && now < settlePeriodEnd, "Error: not within rebalancing period");
+      require(settlePeriodStart <= now &&
+              now < settlePeriodEnd,
+              "Error: not within rebalancing period");
       status = Status.OPEN;
     } else {
       revert("Error: Period not recognized");
@@ -121,6 +133,8 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // === CONSTRUCTOR ===
 
   /**
+   * Constructor for RebalancingBsktToken
+   *
    * @param _tokens Tokens in the initial creation unit
    * @param _quantities Quantities in the initial creation unit
    * @param _creationSize Amount (in base units) for one creation unit
@@ -189,6 +203,13 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   // === EXTERNAL FUNCTIONS ===
 
+  /**
+   * Creates Bskt tokens in exchange for underlying tokens. Before calling,
+   * underlying tokens must be approved to be moved by the Bskt contract.
+   *
+   * @param amount Number of Bskt tokens to create, in base units. Must be a
+   * multiple of the creationSize.
+   */
   function issue(uint256 amount)
     external
     onlyDuringValidPeriod(FN.ISSUE)
@@ -213,6 +234,14 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     emit Issue(msg.sender, amount);
   }
 
+  /**
+   * Destroys Bskt tokens in exchange for underlying tokens.
+   *
+   * @param amount Number of Bskt tokens to redeem, in base units. Must be a
+   * multiple of the creationSize.
+   * @param tokensToSkipOverride List of tokens to skip. Overrides the default
+   * tokensToSkip
+   */
   function redeem(uint256 amount, address[] tokensToSkipOverride)
     external
     onlyDuringValidPeriod(FN.REDEEM)
@@ -248,13 +277,16 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     emit Redeem(msg.sender, amount, _tokensToSkip);
   }
 
-  // Transfers tokens from escrow to fund and fund to bidder
+  /**
+   * Transfers tokens between escrow, fund, and bidder to settle bid
+   */
   function settleBid() internal {
     BidImpl.settleBid(bestBid, escrow, totalUnits());
   }
 
-  // Updates creation unit tokens and quantities
-  // List of tokens in bestBid should be the union of tokens in registry and fund
+  /**
+   * Updates creation unit tokens and quantities
+   */
   function updateBalances() internal {
     Bid.Bid memory _bestBid = bestBid;
     uint256[] memory updatedQuantities = new uint256[](_bestBid.tokens.length);
@@ -280,21 +312,10 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     }
   }
 
-  //// handles AUM fee
-  //function payFees() internal {
-    //// rebalancingFeePct  // should read from registry
-    //uint256 length = tokens.length;
-    //for (uint256 i = 0; i < length; i++) {
-      //uint256 amount = quantities[i] * rebalancingFeePct;  // use Rational
-      //IERC20(tokens[i]).transfer(registry.beneficiary(), amount);
-      //// update balances again
-      //quantities[i] = quantities[i].sub(amount);
-    //}
-  //}
-
-  // Settles the best bid and updates creation unit
-  // ADDON: maybe add some options to not rebalance if bestBid is atrocious (< threshold%)
-  // Anyone can call this
+  /**
+   * Settles the best bid and updates creation unit
+   * Only callable during the settlement period
+   */
   function rebalance()
     external
     onlyDuringValidPeriod(FN.REBALANCE)
@@ -308,6 +329,12 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     emit Rebalance(msg.sender);
   }
 
+  /**
+   * Offers a bid. Escrows the tokens specified by the bid. Releases escrowed tokens if a bid is beaten.
+   *
+   * @param numerator Numerator of rational representing percentage to fill
+   * @param denominator Denominator of rational representing percentage to fill
+   */
   function bid(uint256 numerator, uint256 denominator)
     external
     onlyDuringValidPeriod(FN.BID)
@@ -316,7 +343,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
       numerator,
       denominator,
       deltaTokens,
-      targetQuantities,
+      targetQBid struct containing info about the best biduantities,
       currentQuantities,
       totalUnits(),
       escrow,
@@ -342,6 +369,8 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
   /**
    * Returns array of quantities in specified order
+   *
+   * @param _tokens Tokens to get current creation unit quantities 
    */
   function getCurrentQuantities(address[] memory _tokens)
     public
@@ -351,8 +380,15 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     return BidImpl.getCurrentQuantities(_tokens, totalUnits());
   }
 
-  // It should not be possible to falsely report a frozen token
-  // If it's possible, it could result in stolen funds
+  /**
+   * Reports a token as frozen if it can be verified that they can't be transferred.
+   * If a token is successfully reported, it's removed from the creation unit
+   * for creation and redemption. Note that redemption can ability to override it.
+   * It should not be possible to falsely report a frozen token, as doing so
+   * could enable exploits.
+   *
+   * @param token Token address to report as frozen
+   */
   function reportFrozenToken(address token) public {
     BidImpl.reportFrozenToken(token, tokens, tokensToSkip, tokenProxy);
   }

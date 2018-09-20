@@ -1,5 +1,4 @@
 pragma solidity 0.4.24;
-//pragma experimental ABIEncoderV2;
 
 import "cryptofin-solidity/contracts/array-utils/AddressArrayUtils.sol";
 import "cryptofin-solidity/contracts/rationals/Rational.sol";
@@ -30,6 +29,7 @@ library BidImpl {
    * Fetches the target creation unit information from the registry.
    * It must combine the target with the current for the contract to know which
    * tokens to sell.
+   *
    * @param registry The registry contract
    * @param tokens Tokens in the current creation unit
    */
@@ -47,6 +47,10 @@ library BidImpl {
   /**
    * Settles the bid by transferring tokens to the fund and paying the bidder
    * with the reward.
+   *
+   * @param _bestBid Bid struct containing info about the best bid
+   * @param escrow Contract responsible for escrow
+   * @param _totalUnits Number of creation units in the fund
    */
   function settleBid(Bid.Bid memory _bestBid, Escrow escrow, uint256 _totalUnits) internal {
     escrow.releaseBid(_bestBid.tokens, address(this), _bestBid.quantities, _totalUnits);
@@ -60,6 +64,16 @@ library BidImpl {
 
   /**
    * Offers a bid. Escrows the tokens specified by the bid. Releases escrowed tokens if a bid is beaten.
+   *
+   * @param numerator Numerator of rational representing percentage to fill
+   * @param denominator Denominator of rational representing percentage to fill
+   * @param _deltaTokens Tokens being considered for rebalancing
+   * @param targetQuantities Target array of quantities
+   * @param currentQuantities Current array of quantities
+   * @param _totalUnits Number of creation units in the fund
+   * @param escrow Contract responsible for escrow
+   * @param bestBid Bid struct containing info about the best bid
+
    */
   function bid(
     uint256 numerator,
@@ -105,6 +119,7 @@ library BidImpl {
    * for a given percentage.
    * Positive values mean tokens flow from the bidder to the fund, negative
    * values mean tokens flow from the fund to the bidder.
+   *
    * @param numerator Numerator of percentage rational
    * @param denominator Denominator of percentage rational
    * @param currentQuantities Creation unit quantities in the current fund
@@ -145,14 +160,17 @@ library BidImpl {
     return _currentQuantities;
   }
 
-  // It should not be possible to falsely report a frozen token
-  // If it's possible, it could result in stolen funds
   /**
    * Reports a token as frozen if it can be verified that they can't be transferred.
    * If a token is successfully reported, it's removed from the creation unit
    * for creation and redemption. Note that redemption can ability to override it.
    * It should not be possible to falsely report a frozen token, as doing so
    * could enable exploits.
+   *
+   * @param token Token address to report as frozen
+   * @param tokens Creation unit tokens
+   * @param tokensToSkip Pointer to tokensToSkip state variable
+   * @param tokenProxy Proxy to check transfers against
    */
   function reportFrozenToken(address token, address[] memory tokens, address[] storage tokensToSkip, TokenProxy tokenProxy) public {
     (uint256 index, bool isIn) = tokensToSkip.indexOf(token);
