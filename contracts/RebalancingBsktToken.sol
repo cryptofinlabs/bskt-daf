@@ -401,11 +401,11 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // === MATH ===
 
   // TODO: use the one from library once a fix to solidity-coverage linking issue is found
-  function MAX_UINT256() internal returns (uint256) {
+  function MAX_UINT256() internal pure returns (uint256) {
     return 2 ** 256 - 1;
   }
 
-  function isNonZero(uint256 n) internal returns (bool) {
+  function isNonZero(uint256 n) internal pure returns (bool) {
     return n != 0;
   }
 

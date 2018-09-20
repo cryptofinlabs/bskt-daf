@@ -191,7 +191,7 @@ contract('RebalancingBsktToken', function(accounts) {
     return state;
   }
 
-  context.only('with simple initial allocation and zero fees', function() {
+  context('with simple initial allocation and zero fees', function() {
     let state;
 
     beforeEach(async function () {
