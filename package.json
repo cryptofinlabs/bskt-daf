@@ -7,6 +7,7 @@
     "test": "test"
   },
   "scripts": {
+    "setup": "mkdir -p ./build",
     "cover": "./node_modules/.bin/solidity-coverage",
     "ganache-cli": "./scripts/ganache-cli.sh",
     "lint": "solium --dir ./contracts",
