@@ -153,13 +153,13 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   ) ERC20Detailed (_name, _symbol, 18)
     public
   {
-    // If the creation unit is empty, users will be able to issue unlimited tokens
-    require(_tokens.length > 0);  // Will need this to prevent attack - can mint infinite tokens
+    // Prevent the creation unit from being empty, which would allow issuing unlimited tokens
+    require(_tokens.length > 0);
+    require(_quantities.argFilter(isNonZero).length > 0);
+
     require(_tokens.length == _quantities.length);
     require(_optOutDuration < _auctionOffset);
     require(_auctionOffset.add(_auctionDuration).add(_settleDuration) <= _rebalancePeriod);
-
-    // require not all zero
 
     tokens = _tokens;
     quantities = _quantities;
