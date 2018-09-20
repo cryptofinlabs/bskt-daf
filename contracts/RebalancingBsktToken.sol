@@ -343,7 +343,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
       numerator,
       denominator,
       deltaTokens,
-      targetQBid struct containing info about the best biduantities,
+      targetQuantities,
       currentQuantities,
       totalUnits(),
       escrow,
