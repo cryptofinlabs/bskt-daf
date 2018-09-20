@@ -3,6 +3,7 @@ const jsonfile = require('jsonfile');
 const BsktRegistry = artifacts.require('BsktRegistry');
 const ERC20Token = artifacts.require('ERC20Token');
 const Math = artifacts.require('Math');
+const MathUtils = artifacts.require('MathUtils');
 const TokenProxy = artifacts.require('TokenProxy');
 const BidImpl = artifacts.require('BidImpl');
 const RebalancingBsktToken = artifacts.require('RebalancingBsktToken');
@@ -24,6 +25,10 @@ module.exports = (deployer, network, accounts) => {
       return deployer.deploy(BidImpl);
     }).then(() => {
       return deployer.link(BidImpl, [RebalancingBsktToken]);
+    }).then(() => {
+      return deployer.deploy(MathUtils);
+    }).then(() => {
+      return deployer.link(MathUtils, [RebalancingBsktToken]);
     }).then(() => {
       return ERC20Token.new({ from: accounts[0] });
     }).then(_feeToken => {

@@ -13,6 +13,7 @@ import "./Escrow.sol";
 import "./IBsktToken.sol";
 import "./impl/BidImpl.sol";
 import "./lib/Bid.sol";
+import "./lib/MathUtils.sol";
 import "./lib/dYdX/TokenInteract.sol";
 import "./lib/dYdX/TokenProxy.sol";
 
@@ -171,7 +172,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   {
     // Prevent the creation unit from being empty, which would allow issuing unlimited tokens
     require(_tokens.length > 0);
-    require(_quantities.argFilter(isNonZero).length > 0);
+    require(_quantities.argFilter(MathUtils.isNonZero).length > 0);
 
     require(_tokens.length == _quantities.length);
     require(_optOutDuration < _auctionOffset);
@@ -198,7 +199,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
 
     // Set up allowance so fees can be paid to registry
     address feeToken = registry.feeToken();
-    TokenInteract.approve(feeToken, registry, MAX_UINT256());
+    TokenInteract.approve(feeToken, registry, MathUtils.MAX_UINT256());
 
     status = Status.OPT_OUT;
   }
@@ -302,7 +303,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     }
 
     // Filter out tokens with quantity 0
-    uint256[] memory indexArray = updatedQuantities.argFilter(isNonZero);
+    uint256[] memory indexArray = updatedQuantities.argFilter(MathUtils.isNonZero);
     if (indexArray.length != _bestBid.tokens.length) {
       // Mismatch because some were zero, so filter them out
       tokens = _bestBid.tokens.argGet(indexArray);
@@ -362,7 +363,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   {
     require(totalUnits() > 0);
     (deltaTokens, targetQuantities) = BidImpl.getProposedCreationUnit(registry, tokens);
-    uint256[] memory indexArray = targetQuantities.argFilter(isNonZero);
+    uint256[] memory indexArray = targetQuantities.argFilter(MathUtils.isNonZero);
     // Prevent creation unit from being nothing, which would allow unlimited issuance
     require(indexArray.length != 0);
     currentQuantities = BidImpl.getCurrentQuantities(deltaTokens, totalUnits());
@@ -462,23 +463,6 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
    */
   function getTargetQuantities() external view returns (uint256[] memory) {
     return targetQuantities;
-  }
-
-  // === MATH ===
-
-  // TODO: use the one from library once a fix to solidity-coverage linking issue is found
-  /**
-   * Returns the max uint256
-   */
-  function MAX_UINT256() internal pure returns (uint256) {
-    return 2 ** 256 - 1;
-  }
-
-  /**
-   * Predicate returning whether input is non-zero
-   */
-  function isNonZero(uint256 n) internal pure returns (bool) {
-    return n != 0;
   }
 
 }
