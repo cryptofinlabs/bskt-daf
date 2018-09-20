@@ -1,7 +1,6 @@
 // Modified from dYdX
 
 pragma solidity 0.4.24;
-pragma experimental "v0.5.0";
 
 import { IERC20 } from "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 

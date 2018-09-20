@@ -25,11 +25,12 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   using UIntArrayUtils for uint256[];
 
   enum Status {
-    OPT_OUT,  // After snapshotting the delta, give investors some time to opt-out if they don't agree with the rebalance. I want a better name though
-    AUCTIONS_OPEN,  // Bids being accepted
+    OPT_OUT,
+    AUCTIONS_OPEN,
     OPEN
   }
 
+  // Used for access controls
   enum FN {
     PROPOSE,
     ISSUE,
@@ -94,6 +95,7 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
       require(status == Status.OPEN ||
               status == Status.OPT_OUT,
               "Error: Invalid status");
+      // There must be enough time left to opt out to propose a new allocation
       require(optOutPeriodEnd <= auctionPeriodStart);
       if (status == Status.OPEN) {
         status = Status.OPT_OUT;

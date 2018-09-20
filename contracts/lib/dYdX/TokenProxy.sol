@@ -1,7 +1,6 @@
 // Modified from dYdX
 
 pragma solidity 0.4.24;
-pragma experimental "v0.5.0";
 
 import { Math } from "openzeppelin-solidity/contracts/math/Math.sol";
 import { SafeMath } from "openzeppelin-solidity/contracts/math/SafeMath.sol";
