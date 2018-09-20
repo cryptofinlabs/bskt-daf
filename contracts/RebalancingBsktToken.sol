@@ -406,30 +406,58 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
     return BidImpl.computeBidQuantities(numerator, denominator, _currentQuantities, _targetQuantities);
   }
 
+  /**
+   * Returns creation unit
+   * @return (tokens, quantities)
+   */
   function creationUnit() public view returns (address[] memory, uint256[] memory) {
     return (tokens, quantities);
   }
 
+  /**
+   * Returns total number of creation units
+   * @return _totalUnits
+   */
   function totalUnits() public view returns (uint256) {
     return totalSupply().div(creationSize);
   }
 
+  /**
+   * Returns the tokens of the creation unit
+   * @return tokens
+   */
   function getTokens() external view returns (address[] memory) {
     return tokens;
   }
 
+  /**
+   * Returns the quantities of the creation unit
+   * @return quantities
+   */
   function getQuantities() external view returns (uint256[] memory) {
     return quantities;
   }
 
+  /**
+   * Returns tokens being considered for rebalancing
+   * This is the union of the tokens in the current creation unit and tokens in
+   * the target creation unit
+   */
   function getDeltaTokens() external view returns (address[] memory) {
     return deltaTokens;
   }
 
+  /**
+   * Get default list of tokens to skip for issuance and redemption due to being
+   * frozen
+   */
   function getTokensToSkip() external view returns (address[] memory) {
     return tokensToSkip;
   }
 
+  /**
+   * Returns the quantities of the target creation unit
+   */
   function getTargetQuantities() external view returns (uint256[] memory) {
     return targetQuantities;
   }
@@ -437,10 +465,16 @@ contract RebalancingBsktToken is ERC20Detailed, ERC20 {
   // === MATH ===
 
   // TODO: use the one from library once a fix to solidity-coverage linking issue is found
+  /**
+   * Returns the max uint256
+   */
   function MAX_UINT256() internal pure returns (uint256) {
     return 2 ** 256 - 1;
   }
 
+  /**
+   * Predicate returning whether input is non-zero
+   */
   function isNonZero(uint256 n) internal pure returns (bool) {
     return n != 0;
   }
