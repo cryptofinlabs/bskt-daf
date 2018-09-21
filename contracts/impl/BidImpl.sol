@@ -138,7 +138,7 @@ library BidImpl {
     Rational.Rational256 memory bidPercentage = Rational.Rational256({ n: numerator, d: denominator });
     int256[] memory bidQuantities = new int256[](targetQuantities.length);
     for (uint256 i = 0; i < targetQuantities.length; i++) {
-      uint256 resultQuantity = bidPercentage.scalarMul(targetQuantities[i]);
+      uint256 resultQuantity = bidPercentage.mul(targetQuantities[i]).toUInt256();
       // Ensure no overflow
       bidQuantities[i] = int256(resultQuantity) - int256(currentQuantities[i]);
     }
