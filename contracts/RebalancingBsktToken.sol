@@ -18,7 +18,7 @@ import "./lib/dYdX/TokenInteract.sol";
 import "./lib/dYdX/TokenProxy.sol";
 
 
-contract RebalancingBsktToken is ERC20Detailed, ERC20 {
+contract RebalancingBsktToken is ERC20Detailed, ERC20, IBsktToken {
 
   using AddressArrayUtils for address[];
   using RationalMath for Rational.Rational256;

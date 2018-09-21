@@ -10,7 +10,7 @@ import "./interfaces/IBsktRegistry.sol";
 import "./lib/dYdX/TokenInteract.sol";
 
 
-contract BsktRegistry is /* IBsktRegistry, */ Ownable {
+contract BsktRegistry is IBsktRegistry, Ownable {
 
   using AddressArrayUtils for address[];
   using SafeMath for uint256;

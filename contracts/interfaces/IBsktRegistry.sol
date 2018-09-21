@@ -5,7 +5,7 @@ contract IBsktRegistry {
 
   function get(address token) public returns (uint256);
 
-  function getTokens(address token) public view returns (address[] memory);
+  function getTokens() public view returns (address[] memory);
 
   function getQuantities(address[] memory _tokens) public returns (uint256[] memory);
 
