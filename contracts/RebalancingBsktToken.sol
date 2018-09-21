@@ -10,7 +10,7 @@ import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
 
 import "./BsktRegistry.sol";
 import "./Escrow.sol";
-import "./IBsktToken.sol";
+import "./interfaces/IBsktToken.sol";
 import "./impl/BidImpl.sol";
 import "./lib/Bid.sol";
 import "./lib/MathUtils.sol";

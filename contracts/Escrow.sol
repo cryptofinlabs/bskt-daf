@@ -3,7 +3,7 @@ pragma solidity 0.4.24;
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 
-import "./OnlyCore.sol";
+import "./lib/OnlyCore.sol";
 import "./lib/dYdX/TokenProxy.sol";
 import "./lib/dYdX/TokenInteract.sol";
 

@@ -1,7 +1,6 @@
 pragma solidity 0.4.24;
 
 
-// OnlyBase?
 contract OnlyCore {
 
   address public CORE;
